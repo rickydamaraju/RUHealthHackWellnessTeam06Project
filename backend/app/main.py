@@ -92,7 +92,11 @@ def meal(meal_id: UUID, owner: str = Depends(identity)):
 @app.post("/meal-photos")
 def start_meal_photo(body: PhotoUploadInput, owner: str = Depends(identity)):
     photo_id = str(uuid4())
-    extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[body.content_type]
+    extension = {
+        "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+        "image/heic": "heic", "image/heif": "heif", "image/avif": "avif", "image/bmp": "bmp",
+        "image/tiff": "tiff",
+    }[body.content_type]
     key = f"users/{owner}/meal-photos/{photo_id}.{extension}"
     data = {
         "id": photo_id, "filename": body.filename, "content_type": body.content_type,
@@ -103,7 +107,7 @@ def start_meal_photo(body: PhotoUploadInput, owner: str = Depends(identity)):
     upload = storage.s3().generate_presigned_post(
         Bucket=os.environ["DATA_BUCKET"], Key=key,
         Fields={"Content-Type": body.content_type},
-        Conditions=[{"Content-Type": body.content_type}, ["content-length-range", 1, 8 * 1024 * 1024]],
+        Conditions=[{"Content-Type": body.content_type}, ["content-length-range", 1, 15 * 1024 * 1024]],
         ExpiresIn=300,
     )
     return {"photo": storage.public_record(data), "upload": upload}
@@ -118,7 +122,7 @@ def complete_meal_photo(photo_id: UUID, owner: str = Depends(identity)):
         uploaded = storage.s3().head_object(Bucket=os.environ["DATA_BUCKET"], Key=record["object_key"])
     except Exception:
         raise HTTPException(409, "The meal photo has not finished uploading. Please try again.") from None
-    if uploaded.get("ContentType") != record["content_type"] or uploaded.get("ContentLength", 0) > 8 * 1024 * 1024:
+    if uploaded.get("ContentType") != record["content_type"] or uploaded.get("ContentLength", 0) > 15 * 1024 * 1024:
         raise HTTPException(422, "The uploaded image type or size is not supported.")
     ready = {**record, "status": "ready", "size_bytes": uploaded["ContentLength"]}
     storage.save_record(owner, f"PHOTO#{photo_id}", ready)

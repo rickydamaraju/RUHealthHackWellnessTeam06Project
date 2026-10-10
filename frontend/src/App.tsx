@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import type { User, UserManager } from 'oidc-client-ts';
 import { Activity, ArrowDownToLine, ArrowRight, Camera, Check, ChevronRight, CircleHelp, Clock3, FileText, Image as ImageIcon, ImagePlus, LayoutDashboard, Leaf, LogOut, Plus, Search, ShieldCheck, Sparkles, Trash2, Upload, Utensils, X } from 'lucide-react';
 import { createApi, type Api } from '@glucose-compass/api-client';
-import type { Food, ImportStatus, Interpretation, Meal, MealPhoto, Nutrition, PhotoAnalysis, Reading, RuntimeConfig } from '@glucose-compass/contracts';
+import type { Food, ImportStatus, Interpretation, Meal, MealPhoto, MealPhotoContentType, Nutrition, PhotoAnalysis, Reading, RuntimeConfig } from '@glucose-compass/contracts';
 import { createAuth } from './auth';
 
 type View = 'overview' | 'meal' | 'history' | 'data';
@@ -11,6 +11,16 @@ const emptyNutrition = (): Nutrition => ({ carbs_g: 0, protein_g: 0, fat_g: 0, f
 const localTime = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 const friendlyDate = (value: string) => new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+const photoTypes: Record<string, MealPhotoContentType> = {
+  'image/jpeg': 'image/jpeg', 'image/jpg': 'image/jpeg', 'image/png': 'image/png', 'image/webp': 'image/webp',
+  'image/gif': 'image/gif', 'image/heic': 'image/heic', 'image/heif': 'image/heif', 'image/avif': 'image/avif',
+  'image/bmp': 'image/bmp', 'image/x-ms-bmp': 'image/bmp', 'image/tiff': 'image/tiff', 'image/x-tiff': 'image/tiff',
+};
+const extensionTypes: Record<string, MealPhotoContentType> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', jpe: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+  heic: 'image/heic', heif: 'image/heif', avif: 'image/avif', bmp: 'image/bmp', dib: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
+};
+const detectPhotoType = (file: File) => photoTypes[file.type.toLowerCase()] ?? extensionTypes[file.name.split('.').pop()?.toLowerCase() ?? ''] ?? null;
 
 export function App() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
@@ -120,7 +130,9 @@ function MealForm({ api, preview, onSaved, onError }: { api: Api | null; preview
   const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoContentType, setPhotoContentType] = useState<MealPhotoContentType | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
+  const [photoPreviewFailed, setPhotoPreviewFailed] = useState(false);
   const [uploadedPhoto, setUploadedPhoto] = useState<MealPhoto | null>(null);
   const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis | null>(null);
   const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
@@ -142,11 +154,11 @@ function MealForm({ api, preview, onSaved, onError }: { api: Api | null; preview
     return () => { live = false; clearTimeout(timer); };
   }, [query, api]);
   const add = (food: Food, grams = 100) => { setSelected(list => [...list, { food, grams }]); };
-  const uploadAndAnalyzePhoto = async (file: File, requestId: number) => {
+  const uploadAndAnalyzePhoto = async (file: File, contentType: MealPhotoContentType, requestId: number) => {
     if (!api) { onError('Photo identification requires AWS sign-in.'); return; }
     setAnalyzingPhoto(true);
     try {
-      const started = await api.startMealPhoto(file.name, file.type as MealPhoto['content_type'], file.size);
+      const started = await api.startMealPhoto(file.name, contentType, file.size);
       const uploadBody = new FormData(); Object.entries(started.upload.fields).forEach(([key, value]) => uploadBody.append(key, value)); uploadBody.append('file', file);
       const uploaded = await fetch(started.upload.url, { method: 'POST', body: uploadBody });
       if (!uploaded.ok) throw new Error('The meal photo upload failed. Please try again.');
@@ -171,13 +183,14 @@ function MealForm({ api, preview, onSaved, onError }: { api: Api | null; preview
   };
   const choosePhoto = (file: File | null) => {
     if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { onError('Choose a JPEG, PNG, or WebP image.'); return; }
-    if (file.size > 8 * 1024 * 1024) { onError('Choose an image smaller than 8 MB.'); return; }
+    const contentType = detectPhotoType(file);
+    if (!contentType) { onError('Choose a JPEG, PNG, HEIC, HEIF, AVIF, WebP, GIF, BMP, or TIFF image.'); return; }
+    if (file.size > 15 * 1024 * 1024) { onError('Choose an image smaller than 15 MB.'); return; }
     if (photoPreviewRef.current) URL.revokeObjectURL(photoPreviewRef.current);
     const nextPreview = URL.createObjectURL(file); photoPreviewRef.current = nextPreview;
     const requestId = ++photoRequest.current;
-    setPhotoFile(file); setPhotoPreview(nextPreview); setUploadedPhoto(null); setPhotoAnalysis(null); setSelected([]); setDescription('');
-    void uploadAndAnalyzePhoto(file, requestId);
+    setPhotoFile(file); setPhotoContentType(contentType); setPhotoPreview(nextPreview); setPhotoPreviewFailed(false); setUploadedPhoto(null); setPhotoAnalysis(null); setSelected([]); setDescription('');
+    void uploadAndAnalyzePhoto(file, contentType, requestId);
   };
   const total = selected.reduce((sum, item) => { for (const key of Object.keys(sum) as (keyof Nutrition)[]) sum[key] += item.food.per_100g[key] * item.grams / 100; return sum; }, emptyNutrition());
   const interpret = async () => {
@@ -191,15 +204,15 @@ function MealForm({ api, preview, onSaved, onError }: { api: Api | null; preview
     setSaving(true);
     try {
       let readyPhoto = uploadedPhoto;
-      if (mode === 'photo' && photoFile && !readyPhoto) {
+      if (mode === 'photo' && photoFile && photoContentType && !readyPhoto) {
         if (api) {
-          const started = await api.startMealPhoto(photoFile.name, photoFile.type as MealPhoto['content_type'], photoFile.size);
+          const started = await api.startMealPhoto(photoFile.name, photoContentType, photoFile.size);
           const uploadBody = new FormData(); Object.entries(started.upload.fields).forEach(([key, value]) => uploadBody.append(key, value)); uploadBody.append('file', photoFile);
           const uploaded = await fetch(started.upload.url, { method: 'POST', body: uploadBody });
           if (!uploaded.ok) throw new Error('The meal photo upload failed. Please try again.');
           readyPhoto = await api.completeMealPhoto(started.photo.id); setUploadedPhoto(readyPhoto);
         } else {
-          readyPhoto = { id: crypto.randomUUID(), filename: photoFile.name, content_type: photoFile.type as MealPhoto['content_type'], size_bytes: photoFile.size, status: 'ready' };
+          readyPhoto = { id: crypto.randomUUID(), filename: photoFile.name, content_type: photoContentType, size_bytes: photoFile.size, status: 'ready' };
         }
       }
       const fields = { description, eaten_at: new Date(eatenAt).toISOString(), entry_method: mode, foods: selected.map(x => ({ food_id: x.food.id, grams: x.grams })), ...(readyPhoto ? { photo_id: readyPhoto.id } : {}) };
@@ -215,7 +228,7 @@ function MealForm({ api, preview, onSaved, onError }: { api: Api | null; preview
   };
   return <><div className="page-heading"><div><p className="eyebrow">ADD A LITTLE CONTEXT</p><h1>What’s on your plate?</h1><p>Find your foods, confirm the portions, and make it part of your journal.</p></div></div><form className="meal-form-grid" onSubmit={save}><section className="panel meal-editor"><div className="tabs"><button type="button" className={mode === 'search' ? 'selected' : ''} onClick={() => setMode('search')}><Search size={17} /> Search foods</button><button type="button" className={mode === 'text' ? 'selected' : ''} onClick={() => setMode('text')}><FileText size={17} /> Describe a meal</button><button type="button" className={mode === 'photo' ? 'selected' : ''} onClick={() => setMode('photo')}><ImagePlus size={17} /> Add a photo</button></div>
     {mode === 'text' && <div className="text-entry"><label htmlFor="meal-description">What did you eat?</label><textarea id="meal-description" value={description} onChange={e => setDescription(e.target.value)} maxLength={2000} placeholder="For example: 150 g cooked rice and grilled chicken" rows={4} /><p className="field-help">You’ll review the matches and confirm portions before saving.</p><button type="button" className="secondary" onClick={interpret} disabled={description.length < 3 || loading}><Sparkles size={16} />{loading ? 'Finding the foods…' : 'Find foods in my description'}</button>{interpreted && <div className="interpretation">{interpreted.items.map((item, i) => <div key={i}><strong>{item.name}</strong><p className="field-help">{item.grams ? `${item.grams} g from your description` : 'Portion not specified. Confirm grams below.'}</p>{item.matches.length ? item.matches.map(food => <button type="button" key={food.id} onClick={() => add(food, item.grams ?? 100)}>{food.name}<Plus size={16} /></button>) : <p>No match. Try a simpler search below.</p>}</div>)}</div>}</div>}
-    {mode === 'photo' && <div className="photo-entry"><label className={`photo-drop-zone ${photoPreview ? 'has-photo' : ''}`} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); choosePhoto(event.dataTransfer.files?.[0] ?? null); }}>{photoPreview ? <img src={photoPreview} alt="Selected meal preview" /> : <><span className="empty-icon"><Camera size={28} /></span><strong>Take or choose a meal photo</strong><span>Use your camera on a phone, or select an image.</span></>}<input aria-label="Choose meal photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={event => choosePhoto(event.target.files?.[0] ?? null)} /></label>{photoFile && <div className="photo-details"><span><strong>{photoFile.name}</strong><small>{(photoFile.size / 1024 / 1024).toFixed(1)} MB · Private upload</small></span><button type="button" aria-label="Remove selected photo" onClick={() => { photoRequest.current += 1; if (photoPreviewRef.current) URL.revokeObjectURL(photoPreviewRef.current); photoPreviewRef.current = ''; setPhotoFile(null); setPhotoPreview(''); setUploadedPhoto(null); setPhotoAnalysis(null); setSelected([]); setAnalyzingPhoto(false); }}><Trash2 size={17} /></button></div>}{analyzingPhoto && <div className="photo-analysis-status"><Sparkles size={18} /><span><strong>Identifying your meal…</strong><small>Matching visible foods to USDA nutrition.</small></span></div>}{photoAnalysis && !analyzingPhoto && <div className="photo-analysis-status ready"><Check size={18} /><span><strong>{selected.length} food{selected.length === 1 ? '' : 's'} matched</strong><small>Review the suggested portions and nutrition before saving.</small></span></div>}<p className="field-help">JPEG, PNG, or WebP · Up to 8 MB. Photo results and portions are estimates.</p></div>}
+    {mode === 'photo' && <div className="photo-entry"><label className={`photo-drop-zone ${photoPreview ? 'has-photo' : ''}`} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); choosePhoto(event.dataTransfer.files?.[0] ?? null); }}>{photoPreview && !photoPreviewFailed ? <img src={photoPreview} alt="Selected meal preview" onError={() => setPhotoPreviewFailed(true)} /> : photoFile ? <><span className="empty-icon"><ImageIcon size={28} /></span><strong>Photo selected</strong><span>{photoFile.name}</span></> : <><span className="empty-icon"><Camera size={28} /></span><strong>Take or choose a meal photo</strong><span>Use your camera on a phone, or select an image.</span></>}<input aria-label="Choose meal photo" type="file" accept="image/*,.heic,.heif,.avif,.tif,.tiff,.bmp" capture="environment" onChange={event => choosePhoto(event.target.files?.[0] ?? null)} /></label>{photoFile && <div className="photo-details"><span><strong>{photoFile.name}</strong><small>{(photoFile.size / 1024 / 1024).toFixed(1)} MB · Private upload</small></span><button type="button" aria-label="Remove selected photo" onClick={() => { photoRequest.current += 1; if (photoPreviewRef.current) URL.revokeObjectURL(photoPreviewRef.current); photoPreviewRef.current = ''; setPhotoFile(null); setPhotoContentType(null); setPhotoPreview(''); setPhotoPreviewFailed(false); setUploadedPhoto(null); setPhotoAnalysis(null); setSelected([]); setAnalyzingPhoto(false); }}><Trash2 size={17} /></button></div>}{analyzingPhoto && <div className="photo-analysis-status"><Sparkles size={18} /><span><strong>Identifying your meal…</strong><small>Converting the image and matching visible foods to USDA nutrition.</small></span></div>}{photoAnalysis && !analyzingPhoto && <div className="photo-analysis-status ready"><Check size={18} /><span><strong>{selected.length} food{selected.length === 1 ? '' : 's'} matched</strong><small>Review the suggested portions and nutrition before saving.</small></span></div>}<p className="field-help">JPEG, PNG, HEIC/HEIF, AVIF, WebP, GIF, BMP, or TIFF · Up to 15 MB. Results are estimates.</p></div>}
     {mode !== 'photo' && <div className="search-area"><label htmlFor="food-search">{mode === 'text' ? 'Or find another food' : 'Search the food catalog'}</label><div className="search-input"><Search size={19} /><input id="food-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Try rice, eggs, oatmeal…" autoComplete="off" /></div><p className="field-help">USDA FNDDS · Nutrition shown per 100 g</p><div className="food-results" aria-live="polite">{searching ? <p className="search-hint">Searching the catalog…</p> : results.length ? results.map(food => <button type="button" className="food-result" key={food.id} onClick={() => add(food)}><span><strong>{food.name}</strong><small>{food.per_100g.calories} kcal · {food.per_100g.carbs_g} g carbs</small></span><Plus size={19} /></button>) : <p className="search-hint">{query.length >= 2 ? 'No matching foods. Try a broader term or log the ingredients separately.' : 'Search for individual foods or common prepared meals.'}</p>}</div></div>}</section>
     <section className="panel meal-summary"><div className="panel-heading"><h2>Your meal</h2><span className="chip">{selected.length} selected</span></div>{!selected.length ? <div className="selection-empty">{analyzingPhoto ? <Sparkles size={29} /> : <Utensils size={29} />}<p>{analyzingPhoto ? 'Analyzing the photo and finding USDA matches…' : mode === 'photo' ? 'Choose a photo to identify its foods.' : 'Add a food to get started.'}</p></div> : selected.map((item, index) => <div className="selected-food" key={`${item.food.id}-${index}`}><div><strong>{item.food.name}</strong><button type="button" aria-label={`Remove ${item.food.name}`} onClick={() => setSelected(list => list.filter((_, i) => i !== index))}><Trash2 size={16} /></button></div>{item.food.portions.length > 0 && <select aria-label={`Suggested portion for ${item.food.name}`} value="" onChange={e => setSelected(list => list.map((x, i) => i === index ? { ...x, grams: Number(e.target.value) } : x))}><option value="" disabled>Choose a portion (optional)</option>{item.food.portions.map((portion, i) => <option key={i} value={portion.grams}>{portion.label} · {portion.grams} g</option>)}</select>}<label className="grams-input"><input aria-label={`Grams of ${item.food.name}`} type="number" min="0.1" max="10000" step="0.1" required value={item.grams || ''} onChange={e => setSelected(list => list.map((x, i) => i === index ? { ...x, grams: Number(e.target.value) } : x))} /> grams</label></div>)}<div className="macro-grid">{[['Carbs', total.carbs_g, 'g'], ['Protein', total.protein_g, 'g'], ['Fat', total.fat_g, 'g'], ['Fiber', total.fiber_g, 'g']].map(([label, value, unit]) => <div key={String(label)}><strong>{Math.round(Number(value))}<small>{unit}</small></strong><span>{label}</span></div>)}</div><div className="calories"><span>Estimated energy</span><strong>{Math.round(total.calories)} kcal</strong></div><label htmlFor="meal-time">When did you eat?</label><input id="meal-time" type="datetime-local" required value={eatenAt} onChange={e => setEatenAt(e.target.value)} />{mode !== 'text' && <><label htmlFor="meal-note">Meal name or note <span className="muted">(optional)</span></label><input id="meal-note" value={description} onChange={e => setDescription(e.target.value)} maxLength={2000} placeholder="Lunch, afternoon snack…" /></>}<button className="primary full-width" type="submit" disabled={!selected.length || saving || analyzingPhoto || (mode === 'photo' && !uploadedPhoto)}><Check size={18} />{saving ? 'Saving…' : preview ? 'Add preview meal' : 'Confirm and save meal'}</button><p className="field-help">Review the food matches and portions. Nutrition values are estimates.</p></section></form></>;
 }

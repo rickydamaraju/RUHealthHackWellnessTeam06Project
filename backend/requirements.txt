@@ -2,3 +2,5 @@ fastapi>=0.115,<1
 mangum>=0.19,<1
 boto3>=1.35,<2
 pydantic>=2.10,<3
+Pillow>=11,<13
+pillow-heif>=0.20,<2

@@ -1,12 +1,22 @@
 import os
+from io import BytesIO
 
 import boto3
 from botocore.config import Config
 from fastapi import HTTPException
+from PIL import Image, ImageOps, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 from pydantic import Field, ValidationError
 
 from . import catalog
 from .schemas import Input
+
+register_heif_opener()
+Image.MAX_IMAGE_PIXELS = 25_000_000
+SUPPORTED_TYPES = {
+    "image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif",
+    "image/avif", "image/bmp", "image/tiff",
+}
 
 
 class DetectedFood(Input):
@@ -20,13 +30,26 @@ class Detection(Input):
     foods: list[DetectedFood] = Field(min_length=1, max_length=20)
 
 
+def _normalize_image(image: bytes, content_type: str):
+    if content_type not in SUPPORTED_TYPES:
+        raise HTTPException(422, "Choose a common photo format such as JPEG, PNG, HEIC, WebP, GIF, AVIF, BMP, or TIFF.")
+    try:
+        with Image.open(BytesIO(image)) as source:
+            source.seek(0)
+            converted = ImageOps.exif_transpose(source).convert("RGB")
+            converted.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+            output = BytesIO()
+            converted.save(output, format="JPEG", quality=88, optimize=True)
+            return output.getvalue(), "jpeg"
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise HTTPException(422, "This file could not be opened as an image. Try exporting it as JPEG or PNG.") from None
+
+
 def analyze(image: bytes, content_type: str):
     model_id = os.environ.get("BEDROCK_MODEL_ID")
     if not model_id:
         raise HTTPException(503, "Photo analysis is not connected yet.")
-    image_format = {"image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp"}.get(content_type)
-    if not image_format:
-        raise HTTPException(422, "This image type cannot be analyzed.")
+    image, image_format = _normalize_image(image, content_type)
     prompt = (
         'Analyze this meal photo and return JSON only in this exact form: '
         '{"foods":[{"name":"visible food","search_term":"simple USDA food term",'

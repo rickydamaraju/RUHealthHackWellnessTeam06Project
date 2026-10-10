@@ -40,8 +40,11 @@ class ImportInput(Input):
 
 class PhotoUploadInput(Input):
     filename: str = Field(min_length=1, max_length=200)
-    content_type: Literal["image/jpeg", "image/png", "image/webp"]
-    size_bytes: int = Field(gt=0, le=8 * 1024 * 1024)
+    content_type: Literal[
+        "image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif",
+        "image/avif", "image/bmp", "image/tiff",
+    ]
+    size_bytes: int = Field(gt=0, le=15 * 1024 * 1024)
 
 
 class PredictionInput(Input):

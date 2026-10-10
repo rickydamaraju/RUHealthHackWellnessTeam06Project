@@ -30,4 +30,5 @@ def test_meal_photo_accepts_only_bounded_web_images():
     with pytest.raises(ValidationError):
         PhotoUploadInput(filename="meal.svg", content_type="image/svg+xml", size_bytes=1024)
     with pytest.raises(ValidationError):
-        PhotoUploadInput(filename="large.jpg", content_type="image/jpeg", size_bytes=9 * 1024 * 1024)
+        PhotoUploadInput(filename="large.jpg", content_type="image/jpeg", size_bytes=16 * 1024 * 1024)
+    assert PhotoUploadInput(filename="iphone.heic", content_type="image/heic", size_bytes=1024).content_type == "image/heic"
