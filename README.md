@@ -12,7 +12,7 @@ Glucose Compass is an AWS-hosted wellness research prototype for participant sig
 - DynamoDB participant partitions for meals, CGM readings, imports, and predictions
 - S3 event → SQS → Lambda processing for validated, retry-safe CGM imports
 - USDA FNDDS 2021–2023 catalog with 5,431 foods and confirmed portion-based nutrition
-- Mobile camera and image upload for meal photos, stored privately in the participant's S3 path and linked to the meal record
+- Mobile camera and image upload for meal photos, stored privately in the participant's S3 path; Amazon Nova Lite identifies visible foods and portions, then the app calculates editable nutrition estimates from USDA data
 - Amazon Bedrock for optional meal-text extraction and a Guardrail that blocks diagnosis and medication-dosing language
 - A SageMaker model endpoint adapter with validated prediction and uncertainty contracts
 - AWS CDK infrastructure and an optional GitHub-to-CodePipeline deployment stack
@@ -70,7 +70,7 @@ npm run deploy -- -c stage=dev --require-approval never
 
 The deployment outputs `WebsiteUrl`, `ApiUrl`, `UserPoolId`, `ClientId`, `DataBucket`, and `ModelBucket`. Open `WebsiteUrl`, create an account, confirm the email, sign in, search a food, log a meal, and upload `frontend/public/cgm-template.csv`.
 
-To enable natural-language meal extraction, choose a Bedrock model that your hackathon account can access and deploy with `-c bedrockModelId=MODEL_ID`. Food search and structured meal logging work without it. To attach the team model, follow [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md).
+To enable natural-language meal extraction and meal-photo analysis, deploy with an image-capable Bedrock model such as `-c bedrockModelId=amazon.nova-lite-v1:0`. Food search and structured meal logging work without it. To attach the team model, follow [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md).
 
 ## Team workflow and deployment pipeline
 

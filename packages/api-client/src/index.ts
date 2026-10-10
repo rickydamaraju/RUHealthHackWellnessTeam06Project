@@ -1,4 +1,4 @@
-import type { Food, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, Page, Prediction } from '@glucose-compass/contracts';
+import type { Food, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, PhotoAnalysis, Page, Prediction } from '@glucose-compass/contracts';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -29,6 +29,7 @@ export function createApi(baseUrl: string, accessToken: () => Promise<string>) {
     saveMeal: (meal: MealInput) => request<Meal>('/meals', meal),
     startMealPhoto: (filename: string, contentType: MealPhoto['content_type'], sizeBytes: number) => request<{ photo: MealPhoto; upload: { url: string; fields: Record<string, string> } }>('/meal-photos', { filename, content_type: contentType, size_bytes: sizeBytes }),
     completeMealPhoto: (photoId: string) => request<MealPhoto>(`/meal-photos/${encodeURIComponent(photoId)}/complete`, {}),
+    analyzeMealPhoto: (photoId: string) => request<PhotoAnalysis>(`/meal-photos/${encodeURIComponent(photoId)}/analyze`, {}),
     readings: () => request<Page<Reading>>('/cgm'),
     startImport: (filename: string, unit: 'mg/dL' | 'mmol/L') => request<{ import: ImportStatus; upload: { url: string; fields: Record<string, string> } }>('/imports', { filename, unit }),
     importStatus: (id: string) => request<ImportStatus>(`/imports/${encodeURIComponent(id)}`),

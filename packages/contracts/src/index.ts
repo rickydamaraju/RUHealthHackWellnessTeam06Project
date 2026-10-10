@@ -10,6 +10,7 @@ export interface Meal { id: string; description: string; eaten_at: string; creat
 export interface Reading { timestamp: string; glucose_mg_dl: number }
 export interface ImportStatus { id: string; filename: string; status: 'awaiting_upload' | 'processing' | 'ready' | 'failed'; error?: string; reading_count?: number }
 export interface Interpretation { items: { name: string; grams: number | null; matches: Food[] }[]; requires_confirmation: true }
+export interface PhotoAnalysis { items: { name: string; grams: number; confidence: number; matches: Food[] }[]; requires_confirmation: true }
 export interface Page<T> { items: T[]; has_more: boolean }
 export interface Prediction {
   id: string; meal_id: string; created_at: string; model_version: string;
