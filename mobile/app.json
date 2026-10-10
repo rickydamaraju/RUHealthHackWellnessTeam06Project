@@ -9,7 +9,8 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.ruhealthhack.glucosecompass"
+      "bundleIdentifier": "com.ruhealthhack.glucosecompass",
+      "appleTeamId": "23HTTA6T6V"
     },
     "android": {
       "package": "com.ruhealthhack.glucosecompass"

@@ -2,7 +2,7 @@
   "name": "mobile",
   "private": true,
   "version": "0.1.0",
-  "main": "node_modules/expo/AppEntry.js",
+  "main": "index.js",
   "scripts": {
     "start": "expo start --dev-client",
     "ios": "expo run:ios",
@@ -15,6 +15,7 @@
     "@kingstinct/react-native-healthkit": "^16.1.0",
     "expo": "~57.0.27",
     "expo-auth-session": "~57.0.14",
+    "expo-dev-client": "~57.0.19",
     "expo-secure-store": "~57.0.4",
     "expo-web-browser": "~57.0.3",
     "react": "19.2.3",
