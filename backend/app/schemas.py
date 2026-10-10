@@ -77,7 +77,9 @@ class HealthSampleInput(Input):
     metric: Literal["heart_rate_bpm", "steps", "basal_energy_kcal", "active_energy_kcal"]
     start_at: datetime
     end_at: datetime
-    value: float = Field(ge=0)
+    # HealthKit may emit empty aggregate buckets as zero. Those are absence of an
+    # observation for model purposes, so the API never accepts them as training data.
+    value: float = Field(gt=0)
 
     @model_validator(mode="after")
     def validate_times(self):
@@ -93,8 +95,8 @@ class WorkoutInput(Input):
     activity_type: str = Field(min_length=1, max_length=100)
     start_at: datetime
     end_at: datetime
-    duration_seconds: float = Field(ge=0, le=7 * 24 * 3600)
-    energy_kcal: float | None = Field(default=None, ge=0, le=100000)
+    duration_seconds: float = Field(gt=0, le=7 * 24 * 3600)
+    energy_kcal: float | None = Field(default=None, gt=0, le=100000)
 
     @model_validator(mode="after")
     def validate_times(self):
@@ -109,13 +111,6 @@ class HealthSyncInput(Input):
     samples: list[HealthSampleInput] = Field(default_factory=list, max_length=1000)
     workouts: list[WorkoutInput] = Field(default_factory=list, max_length=250)
     anchor: str | None = Field(default=None, max_length=4000)
-
-    @model_validator(mode="after")
-    def require_data(self):
-        if not self.samples and not self.workouts:
-            raise ValueError("Include at least one health sample or workout.")
-        return self
-
 
 class PhotoUploadInput(Input):
     filename: str = Field(min_length=1, max_length=200)

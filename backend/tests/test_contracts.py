@@ -52,3 +52,11 @@ def test_health_sync_requires_timezone_and_supported_metrics():
             "source_id": "sample", "metric": "blood_pressure", "value": 120,
             "start_at": "2026-10-10T08:00:00", "end_at": "2026-10-10T08:00:10",
         }])
+
+
+def test_health_sync_rejects_zero_as_missing_observation():
+    with pytest.raises(ValidationError):
+        HealthSyncInput(samples=[{
+            "source_id": "empty-bucket", "metric": "steps", "value": 0,
+            "start_at": "2026-10-10T08:00:00Z", "end_at": "2026-10-10T09:00:00Z",
+        }])

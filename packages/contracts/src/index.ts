@@ -17,6 +17,11 @@ export interface HealthSampleInput { source_id: string; metric: HealthMetric; st
 export interface WorkoutInput { source_id: string; activity_type: string; start_at: string; end_at: string; duration_seconds: number; energy_kcal?: number }
 export interface HealthSyncInput { samples: HealthSampleInput[]; workouts: WorkoutInput[]; anchor?: string }
 export interface HealthRecord { source_id: string; source: 'apple_health'; metric: HealthMetric | 'workout'; timestamp: string; end_timestamp: string; value?: number; duration_seconds?: number; energy_kcal?: number; activity_type?: string }
+export type ConnectionState = 'not_connected' | 'connected' | 'connected_no_data' | 'denied' | 'reauthorization_required' | 'unavailable';
+export interface Connections {
+  apple_health: { status: 'not_connected' | 'connected' | 'connected_no_data'; record_count: number; last_synced_at?: string | null };
+  dexcom: { configured: boolean; status: ConnectionState; reading_count: number; last_synced_at?: string | null; last_reading_at?: string | null };
+}
 export type DiabetesStatus = 'type_1' | 'type_2' | 'unknown' | 'no_diabetes';
 export interface ProfileInput { first_name: string; last_name: string; age: number; height: number; height_unit: 'cm' | 'in'; weight: number; weight_unit: 'kg' | 'lb'; diabetes_status: DiabetesStatus }
 export interface Profile extends ProfileInput { height_cm: number; weight_kg: number; created_at: string; updated_at: string }

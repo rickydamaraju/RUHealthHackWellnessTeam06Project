@@ -19,6 +19,7 @@ import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as bedrock from 'aws-cdk-lib/aws-bedrock';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 
 interface Props extends StackProps { stage: string; bedrockModelId?: string; modelEndpointName?: string; createCognitoDomain?: boolean }
 
@@ -74,13 +75,22 @@ export class WellnessStack extends Stack {
       ] },
     });
     const guardrailVersion = new bedrock.CfnGuardrailVersion(this, 'WellnessGuardrailVersion', { guardrailIdentifier: guardrail.attrGuardrailId, description: 'Initial wellness wording policy' });
+    const dexcomSecret = new secretsmanager.Secret(this, 'DexcomCredentials', {
+      secretName: `glucose-compass/dexcom/${props.stage}`,
+      description: 'Dexcom OAuth application credentials. Replace placeholder values after Dexcom approves the application.',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({ client_id: '', client_secret: '', redirect_uri: '', environment: 'sandbox' }),
+        generateStringKey: 'setup_nonce', excludePunctuation: true,
+      },
+    });
     const backendCode = lambda.DockerImageCode.fromImageAsset(path.join(repo, 'backend'), { platform: ecrAssets.Platform.LINUX_AMD64 });
-    const environment = { TABLE_NAME: records.tableName, DATA_BUCKET: files.bucketName, MODELS_BUCKET: models.bucketName, BEDROCK_MODEL_ID: props.bedrockModelId ?? '', MODEL_ENDPOINT_NAME: props.modelEndpointName ?? '', GUARDRAIL_ID: guardrail.attrGuardrailId, GUARDRAIL_VERSION: guardrailVersion.attrVersion };
+    const environment = { TABLE_NAME: records.tableName, DATA_BUCKET: files.bucketName, MODELS_BUCKET: models.bucketName, BEDROCK_MODEL_ID: props.bedrockModelId ?? '', MODEL_ENDPOINT_NAME: props.modelEndpointName ?? '', GUARDRAIL_ID: guardrail.attrGuardrailId, GUARDRAIL_VERSION: guardrailVersion.attrVersion, DEXCOM_SECRET_ARN: dexcomSecret.secretArn };
     const apiFunction = new lambda.DockerImageFunction(this, 'ApiFunction', {
       code: backendCode, memorySize: 1024, timeout: Duration.seconds(25), environment,
       logGroup: new logs.LogGroup(this, 'ApiLogs', { retention: logs.RetentionDays.TWO_WEEKS }),
     });
     records.grantReadWriteData(apiFunction);
+    dexcomSecret.grantRead(apiFunction);
     apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['s3:PutObject'], resources: [files.arnForObjects('users/*')] }));
     apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [files.arnForObjects('users/*')] }));
     models.grantRead(apiFunction);
@@ -95,6 +105,7 @@ export class WellnessStack extends Stack {
     const integration = new HttpLambdaIntegration('Backend', apiFunction);
     api.addRoutes({ path: '/{proxy+}', methods: [apigw.HttpMethod.GET, apigw.HttpMethod.POST], integration });
     api.addRoutes({ path: '/health', methods: [apigw.HttpMethod.GET], integration, authorizer: new apigw.HttpNoneAuthorizer(), authorizationScopes: [] });
+    api.addRoutes({ path: '/integrations/dexcom/callback', methods: [apigw.HttpMethod.GET], integration, authorizer: new apigw.HttpNoneAuthorizer(), authorizationScopes: [] });
     const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 20, throttlingRateLimit: 10 };
     const deadLetterQueue = new sqs.Queue(this, 'ImportDLQ', { retentionPeriod: Duration.days(14), enforceSSL: true });
@@ -125,5 +136,6 @@ export class WellnessStack extends Stack {
     new CfnOutput(this, 'ClientId', { value: client.userPoolClientId });
     new CfnOutput(this, 'DataBucket', { value: files.bucketName });
     new CfnOutput(this, 'ModelBucket', { value: models.bucketName });
+    new CfnOutput(this, 'DexcomSecretArn', { value: dexcomSecret.secretArn });
   }
 }

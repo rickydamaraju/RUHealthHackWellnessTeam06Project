@@ -4,8 +4,9 @@ import os
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 from mangum import Mangum
-from . import catalog, meal_photo, meal_text, model_adapter, storage
+from . import catalog, dexcom, meal_photo, meal_text, model_adapter, storage
 from .schemas import ActivityImportInput, HealthSyncInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, ProfileInput, TextInput, timestamp
 
 app = FastAPI(title="Glucose Compass API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
@@ -30,6 +31,35 @@ def health():
 @app.get("/me")
 def me(owner: str = Depends(identity)):
     return {"id": owner, "model_connected": bool(os.environ.get("MODEL_ENDPOINT_NAME")), "text_interpretation_enabled": bool(os.environ.get("BEDROCK_MODEL_ID"))}
+
+
+@app.get("/connections")
+def connections(owner: str = Depends(identity)):
+    health_sync = storage.get_record(owner, "HEALTH_SYNC")
+    return {
+        "apple_health": {
+            "status": ("connected" if health_sync.get("record_count", 0) else "connected_no_data") if health_sync else "not_connected",
+            "record_count": int(health_sync.get("record_count", 0)) if health_sync else 0,
+            "last_synced_at": health_sync.get("synced_at") if health_sync else None,
+        },
+        "dexcom": dexcom.status(owner),
+    }
+
+
+@app.post("/connections/dexcom/start")
+def start_dexcom(owner: str = Depends(identity)):
+    return {"authorization_url": dexcom.authorization_url(owner)}
+
+
+@app.get("/integrations/dexcom/callback")
+def dexcom_callback(state: str = Query(min_length=20, max_length=200), code: str | None = None, error: str | None = None):
+    result = dexcom.finish_authorization(state, code, error)
+    return RedirectResponse(f"glucosecompass://integrations/dexcom?status={result}", status_code=302)
+
+
+@app.post("/connections/dexcom/sync")
+def sync_dexcom(owner: str = Depends(identity)):
+    return dexcom.sync(owner)
 
 
 @app.get("/profile")
@@ -261,7 +291,12 @@ def sync_health_data(body: HealthSyncInput, owner: str = Depends(identity)):
         for key, value in records:
             batch.put_item(Item=storage.pack({"pk": f"USER#{owner}", "sk": key, **value}))
     synced_at = timestamp(datetime.now(timezone.utc))
-    storage.save_record(owner, "HEALTH_SYNC", {"anchor": body.anchor, "synced_at": synced_at, "record_count": len(records)})
+    existing = storage.get_record(owner, "HEALTH_SYNC") or {}
+    storage.save_record(owner, "HEALTH_SYNC", {
+        "anchor": body.anchor, "synced_at": synced_at,
+        "record_count": max(int(existing.get("record_count", 0)), len(records)),
+        "last_batch_count": len(records),
+    })
     return {"accepted": len(records), "synced_at": synced_at}
 
 

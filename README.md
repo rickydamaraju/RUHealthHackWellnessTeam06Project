@@ -24,7 +24,7 @@ Glucose Compass is an AWS-hosted wellness research prototype for participant sig
 ## System flow
 
 ```text
-Browser / future mobile app
+Browser / native mobile app
   ├─ Cognito Hosted UI (registration, login, tokens)
   └─ CloudFront → private S3 website
                   ↓ JWT
@@ -57,11 +57,22 @@ The `mobile/` Expo application uses the same Cognito account and AWS API as the 
 1. Join the Apple Developer Program and enable HealthKit for bundle ID `com.ruhealthhack.glucosecompass` (or replace it with your team's bundle ID).
 2. Install Xcode, connect an iPhone, and run `npm run ios --workspace mobile`.
 3. Sign in with the same account used on the website.
-4. Tap **Allow access and sync 7 days**, approve the six requested data categories, and keep the app installed for later incremental synchronization.
+4. On **Connect your data**, approve Apple Health and Dexcom separately. Apple Health synchronizes the prior seven days when the button is tapped.
 
-The app sends batches of at most 1,000 HealthKit samples to `POST /health-data/sync`. API Gateway derives the owner from the validated Cognito token; the client cannot submit a different participant ID. DynamoDB keys combine the original timestamp, metric, and a hash of the HealthKit sample UUID, making repeat synchronizations idempotent. Prediction requests read the prior seven-day window and include it as `apple_health_history` in the SageMaker request.
+The app sends bounded HealthKit batches to `POST /health-data/sync`. API Gateway derives the owner from the validated Cognito token; the client cannot submit a different participant ID. DynamoDB keys combine the original timestamp, metric, and a hash of the HealthKit sample UUID, making repeat synchronizations idempotent. Prediction requests read the prior seven-day window and include it as `apple_health_history` in the SageMaker request. Zero and invalid measurements are removed at collection and again at the model boundary. No-data periods remain missing instead of becoming zero-valued model features.
 
-Dexcom connection is represented in the mobile interface but remains disabled until a Dexcom Developer application supplies a client ID, client secret, approved callback URL, and sandbox or Limited Access approval. The secret must be stored in AWS rather than the mobile application.
+Dexcom OAuth, token refresh, and seven-day EGV synchronization are implemented server-side. The connection remains disabled until a Dexcom Developer application supplies approved credentials. Update the AWS Secrets Manager secret shown by the `DexcomSecretArn` stack output with:
+
+```json
+{
+  "client_id": "DEXCOM_CLIENT_ID",
+  "client_secret": "DEXCOM_CLIENT_SECRET",
+  "redirect_uri": "https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/integrations/dexcom/callback",
+  "environment": "sandbox"
+}
+```
+
+Register the identical redirect URI with Dexcom. Use `sandbox` during development and `production` only after Dexcom grants access. Dexcom tokens remain in the AWS backend and are never returned to or stored by the mobile app. A connection with no EGV records is saved as `connected_no_data`; it does not create placeholder glucose readings.
 
 Validate before a merge:
 
@@ -85,7 +96,7 @@ npm run build
 npm run deploy -- -c stage=dev --require-approval never
 ```
 
-The deployment outputs `WebsiteUrl`, `ApiUrl`, `UserPoolId`, `ClientId`, `DataBucket`, and `ModelBucket`. Open `WebsiteUrl`, create an account, confirm the email, sign in, search a food, log a meal, and upload `frontend/public/cgm-template.csv`.
+The deployment outputs `WebsiteUrl`, `ApiUrl`, `UserPoolId`, `ClientId`, `DataBucket`, `ModelBucket`, and `DexcomSecretArn`. Open `WebsiteUrl`, create an account, confirm the email, sign in, search a food, log a meal, and upload `frontend/public/cgm-template.csv`.
 
 To enable natural-language meal extraction and meal-photo analysis, deploy with an image-capable Bedrock model such as `-c bedrockModelId=amazon.nova-lite-v1:0`. Food search and structured meal logging work without it. To attach the team model, follow [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md).
 

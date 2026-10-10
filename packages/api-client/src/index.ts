@@ -1,4 +1,4 @@
-import type { ActivityImportStatus, ActivityReading, Food, HealthRecord, HealthSyncInput, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, PhotoAnalysis, Page, Prediction, Profile, ProfileInput } from '@glucose-compass/contracts';
+import type { ActivityImportStatus, ActivityReading, Connections, Food, HealthRecord, HealthSyncInput, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, PhotoAnalysis, Page, Prediction, Profile, ProfileInput } from '@glucose-compass/contracts';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -41,6 +41,9 @@ export function createApi(baseUrl: string, accessToken: () => Promise<string>) {
     activityImportStatus: (id: string) => request<ActivityImportStatus>(`/activity-imports/${encodeURIComponent(id)}`),
     syncHealthData: (data: HealthSyncInput) => request<{ accepted: number; synced_at: string }>('/health-data/sync', data),
     healthData: () => request<Page<HealthRecord>>('/health-data'),
+    connections: () => request<Connections>('/connections'),
+    startDexcomConnection: () => request<{ authorization_url: string }>('/connections/dexcom/start', {}),
+    syncDexcom: () => request<{ accepted: number; status: 'connected' | 'connected_no_data'; synced_at: string; last_reading_at?: string }>('/connections/dexcom/sync', {}),
     predict: (mealId: string) => request<Prediction>('/predictions', { meal_id: mealId }),
   };
 }

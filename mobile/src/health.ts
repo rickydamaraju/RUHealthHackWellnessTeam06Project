@@ -25,17 +25,18 @@ export async function syncAppleHealth(api: Api) {
     const found = await queryQuantitySamples(item.id, {
       filter: { date: { startDate, strictStartDate: true } }, limit: 0, ascending: true, unit: item.unit,
     });
-    samples.push(...found.map(sample => ({
+    samples.push(...found.filter(sample => Number.isFinite(sample.quantity) && sample.quantity > 0).map(sample => ({
       source_id: sample.uuid, metric: item.metric,
       start_at: sample.startDate.toISOString(), end_at: sample.endDate.toISOString(), value: sample.quantity,
     })));
   }
   const workoutSamples = await queryWorkoutSamples({ filter: { date: { startDate, strictStartDate: true } }, limit: 0, ascending: true });
-  const workouts: WorkoutInput[] = workoutSamples.map(workout => ({
+  const workouts: WorkoutInput[] = workoutSamples.filter(workout => Number.isFinite(workout.duration.quantity) && workout.duration.quantity > 0).map(workout => ({
     source_id: workout.uuid, activity_type: String(workout.workoutActivityType),
     start_at: workout.startDate.toISOString(), end_at: workout.endDate.toISOString(),
     duration_seconds: workout.duration.quantity,
-    ...(workout.totalEnergyBurned ? { energy_kcal: workout.totalEnergyBurned.quantity } : {}),
+    ...(workout.totalEnergyBurned && Number.isFinite(workout.totalEnergyBurned.quantity) && workout.totalEnergyBurned.quantity > 0
+      ? { energy_kcal: workout.totalEnergyBurned.quantity } : {}),
   }));
   let accepted = 0;
   let sampleIndex = 0, workoutIndex = 0;
@@ -44,6 +45,9 @@ export async function syncAppleHealth(api: Api) {
     accepted += response.accepted;
     sampleIndex += 750; workoutIndex += 200;
   }
-  if (!samples.length && !workouts.length) return { accepted: 0 };
+  if (!samples.length && !workouts.length) {
+    await api.syncHealthData({ samples: [], workouts: [] });
+    return { accepted: 0 };
+  }
   return { accepted };
 }
