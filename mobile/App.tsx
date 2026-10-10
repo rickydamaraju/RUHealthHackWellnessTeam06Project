@@ -42,7 +42,7 @@ export default function App() {
         const connected = connections.dexcom.status === 'connected' || connections.dexcom.status === 'connected_no_data';
         if (connected) {
           await api.syncDexcom();
-        } else if (!alreadyRequested) {
+        } else if (interactive || !alreadyRequested) {
           const start = await api.startDexcomConnection();
           const result = await WebBrowser.openAuthSessionAsync(start.authorization_url, DEXCOM_RETURN_URL);
           if (result.type === 'success') await api.syncDexcom();
