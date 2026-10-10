@@ -1,0 +1,13 @@
+node_modules/
+dist/
+cdk.out/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.env.*
+!.env.example
+.DS_Store
+frontend/public/config.local.json
+.local/

@@ -1,0 +1,15 @@
+{
+  "name": "mini-sathi",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["frontend", "infrastructure", "packages/contracts", "packages/api-client"],
+  "scripts": {
+    "dev": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend",
+    "check": "npm run check --workspaces --if-present",
+    "test:backend": "PYTHONPATH=backend .venv/bin/python -m pytest backend/tests -q",
+    "synth": "npm run synth --workspace infrastructure",
+    "deploy": "npm run deploy --workspace infrastructure"
+  },
+  "engines": { "node": ">=22.12.0" }
+}
