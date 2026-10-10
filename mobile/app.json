@@ -3,6 +3,7 @@
     "name": "Glucose Compass",
     "slug": "glucose-compass",
     "version": "0.1.0",
+    "icon": "./assets/glucose-compass-icon.png",
     "orientation": "portrait",
     "scheme": "glucosecompass",
     "userInterfaceStyle": "light",
@@ -10,10 +11,18 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.ruhealthhack.glucosecompass",
-      "appleTeamId": "23HTTA6T6V"
+      "appleTeamId": "23HTTA6T6V",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Glucose Compass uses the camera when you choose to photograph a meal.",
+        "NSPhotoLibraryUsageDescription": "Glucose Compass lets you choose a meal photo from your library."
+      }
     },
     "android": {
-      "package": "com.ruhealthhack.glucosecompass"
+      "package": "com.ruhealthhack.glucosecompass",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/glucose-compass-icon.png",
+        "backgroundColor": "#F8F6EE"
+      }
     },
     "plugins": [
       "expo-secure-store",

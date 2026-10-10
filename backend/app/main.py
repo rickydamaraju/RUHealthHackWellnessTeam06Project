@@ -290,6 +290,7 @@ def sync_health_data(body: HealthSyncInput, owner: str = Depends(identity)):
     with storage.table().batch_writer(overwrite_by_pkeys=["pk", "sk"]) as batch:
         for key, value in records:
             batch.put_item(Item=storage.pack({"pk": f"USER#{owner}", "sk": key, **value}))
+    storage.archive_observations(owner, "apple-health", [value for _, value in records])
     synced_at = timestamp(datetime.now(timezone.utc))
     existing = storage.get_record(owner, "HEALTH_SYNC") or {}
     storage.save_record(owner, "HEALTH_SYNC", {

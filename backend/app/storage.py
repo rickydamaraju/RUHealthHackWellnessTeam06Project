@@ -1,7 +1,9 @@
 import json
 import os
+from datetime import datetime, timezone
 from decimal import Decimal
 from functools import lru_cache
+from uuid import uuid4
 import boto3
 from boto3.dynamodb.conditions import Key
 from boto3.dynamodb.types import TypeSerializer
@@ -17,6 +19,20 @@ def table():
 @lru_cache
 def s3():
     return boto3.client("s3", config=Config(signature_version="s3v4"))
+
+
+def archive_observations(owner: str, source: str, records: list[dict]):
+    """Keep an immutable S3 copy of nonempty device batches for model pipelines."""
+    if not records:
+        return None
+    now = datetime.now(timezone.utc)
+    key = f"users/{owner}/device-data/{source}/{now:%Y/%m/%d}/{now:%H%M%S}-{uuid4()}.json"
+    s3().put_object(
+        Bucket=os.environ["DATA_BUCKET"], Key=key,
+        Body=json.dumps({"source": source, "synced_at": now.isoformat(), "records": records}, separators=(",", ":")).encode(),
+        ContentType="application/json",
+    )
+    return key
 
 
 def pack(value):

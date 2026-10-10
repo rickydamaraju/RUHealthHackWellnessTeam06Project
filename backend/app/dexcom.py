@@ -133,6 +133,7 @@ def sync(owner: str) -> dict:
     with storage.table().batch_writer(overwrite_by_pkeys=["pk", "sk"]) as batch:
         for item in records:
             batch.put_item(Item=storage.pack({"pk": f"USER#{owner}", "sk": f"CGM#{item['timestamp']}", **item}))
+    storage.archive_observations(owner, "dexcom", records)
     synced_at = timestamp(end)
     connection.update({
         "status": "connected" if records else "connected_no_data", "last_synced_at": synced_at,

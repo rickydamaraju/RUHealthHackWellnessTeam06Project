@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { User, UserManager } from 'oidc-client-ts';
 import { Activity, ArrowDownToLine, ArrowRight, Camera, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, FileText, Footprints, HeartPulse, Image as ImageIcon, ImagePlus, LayoutDashboard, Leaf, LogOut, Plus, Search, ShieldCheck, Sparkles, Trash2, Upload, Utensils, X } from 'lucide-react';
@@ -21,6 +21,19 @@ const extensionTypes: Record<string, MealPhotoContentType> = {
   heic: 'image/heic', heif: 'image/heif', avif: 'image/avif', bmp: 'image/bmp', dib: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
 };
 const detectPhotoType = (file: File) => photoTypes[file.type.toLowerCase()] ?? extensionTypes[file.name.split('.').pop()?.toLowerCase() ?? ''] ?? null;
+
+declare global { interface Window { ReactNativeWebView?: { postMessage: (message: string) => void } } }
+const postToNative = (message: object) => window.ReactNativeWebView?.postMessage(JSON.stringify(message));
+const refreshNativeData = () => {
+  if (!window.ReactNativeWebView) return Promise.resolve();
+  return new Promise<void>(resolve => {
+    const finish = () => { clearTimeout(timer); window.removeEventListener('NATIVE_SYNC_COMPLETE', finish); window.removeEventListener('NATIVE_SYNC_ERROR', finish); resolve(); };
+    const timer = window.setTimeout(finish, 60000);
+    window.addEventListener('NATIVE_SYNC_COMPLETE', finish, { once: true });
+    window.addEventListener('NATIVE_SYNC_ERROR', finish, { once: true });
+    postToNative({ type: 'SYNC_NOW' });
+  });
+};
 
 export function App() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
@@ -72,7 +85,7 @@ export function App() {
     return session.access_token;
   }) : null, [config, user]);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (!api) return;
     try {
       const [historyPage, cgm, movement, participant, health] = await Promise.all([api.meals(), api.readings(), api.activity(), api.profile(), api.healthData()]);
@@ -80,14 +93,26 @@ export function App() {
       setProfile(participant.profile); setHealthRecords(health.items);
     } catch (error) { setNotice(errorMessage(error)); }
     finally { setProfileLoaded(true); }
-  };
+  }, [api]);
   useEffect(() => { void refresh(); }, [api]);
+  useEffect(() => {
+    if (!user || !config) { postToNative({ type: 'SIGNED_OUT' }); return; }
+    void auth.current?.getUser().then(session => {
+      if (session && !session.expired) postToNative({ type: 'AUTHENTICATED', accessToken: session.access_token, apiUrl: config.apiUrl, userId: String(session.profile.sub) });
+    });
+  }, [user, config]);
+  useEffect(() => {
+    const synchronized = () => { void refresh(); };
+    window.addEventListener('NATIVE_SYNC_COMPLETE', synchronized);
+    return () => window.removeEventListener('NATIVE_SYNC_COMPLETE', synchronized);
+  }, [refresh]);
 
   const signIn = async () => {
     if (!auth.current) return;
     try { await auth.current.signinRedirect(); } catch (error) { setNotice(errorMessage(error)); }
   };
   const signOut = async () => {
+    postToNative({ type: 'SIGNED_OUT' });
     if (auth.current && config) {
       try { await auth.current.revokeTokens(['refresh_token']); } catch { /* Local session is always cleared. */ }
       await auth.current.removeUser();
@@ -119,7 +144,7 @@ export function App() {
         <section className="panel recent-panel"><div className="panel-heading"><div><h2>Recent meals</h2><p>The everyday details that build your picture.</p></div><button className="text-button" onClick={() => setView('history')}>View history <ArrowRight size={16} /></button></div>{meals.length ? meals.slice(0, 3).map(meal => <MealRow key={meal.id} meal={meal} />) : <div className="empty-row"><span className="icon-box"><Utensils size={20} /></span><div><strong>A fresh page for your meals</strong><p>Search for a food or describe what you ate.</p></div><button className="text-button" onClick={() => setView('meal')}>Add your first meal <Plus size={16} /></button></div>}</section>
       </>}
       {view === 'meal' && <MealForm api={api} preview={preview} onSaved={saveMeal} onError={setNotice} />}
-      {view === 'history' && <><div className="page-heading"><div><p className="eyebrow">YOUR FOOD JOURNAL</p><h1>Meal history</h1><p>Confirmed portions and nutrition, all in one place.</p></div><button className="primary" onClick={() => setView('meal')}><Plus size={18} /> Log a meal</button></div><section className="panel">{meals.length ? meals.map(meal => <MealRow key={meal.id} meal={meal} action={async () => { if (!api) { setNotice('Predictions will be available when your team connects the model.'); return; } try { await api.predict(meal.id); setNotice('Prediction saved.'); } catch (error) { setNotice(errorMessage(error)); } }} />) : <Empty title="Your journal is ready" text="Your saved meals will appear here." icon={<Utensils size={28} />} />}{hasMoreMeals && <p className="panel-foot">Showing the latest 100 meals. Full-history export will be added in the next phase.</p>}</section></>}
+      {view === 'history' && <><div className="page-heading"><div><p className="eyebrow">YOUR FOOD JOURNAL</p><h1>Meal history</h1><p>Confirmed portions and nutrition, all in one place.</p></div><button className="primary" onClick={() => setView('meal')}><Plus size={18} /> Log a meal</button></div><section className="panel">{meals.length ? meals.map(meal => <MealRow key={meal.id} meal={meal} action={async () => { if (!api) { setNotice('Predictions will be available when your team connects the model.'); return; } try { setNotice('Refreshing connected health data…'); await refreshNativeData(); const result = await api.predict(meal.id); setNotice(`Prediction saved: ${Math.round(result.peak_mg_dl)} mg/dL peak around ${result.time_to_peak_minutes} minutes.`); } catch (error) { setNotice(errorMessage(error)); } }} />) : <Empty title="Your journal is ready" text="Your saved meals will appear here." icon={<Utensils size={28} />} />}{hasMoreMeals && <p className="panel-foot">Showing the latest 100 meals. Full-history export will be added in the next phase.</p>}</section></>}
       {view === 'data' && <DataUpload api={api} onError={setNotice} onReady={refresh} readings={readings} />}
       {view === 'activity' && <ActivityUpload api={api} onError={setNotice} onReady={refresh} activity={activity} healthRecords={healthRecords} />}
       <footer className="app-footer"><span>Made for your everyday understanding.</span><span>Research prototype · No diagnosis or medication advice</span></footer></main>
