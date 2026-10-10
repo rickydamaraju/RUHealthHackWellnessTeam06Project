@@ -11,10 +11,11 @@ from . import guardrails, storage
 from .schemas import ModelOutput, timestamp
 
 
-def _payload(meal: dict, readings: list[dict], activity: list[dict] | None = None) -> dict:
+def _payload(meal: dict, readings: list[dict], activity: list[dict] | None = None, profile: dict | None = None) -> dict:
     activity = activity or []
     return {
         "schema_version": "1.0",
+        "participant": {key: profile[key] for key in ("age", "height_cm", "weight_kg", "diabetes_status") if profile and key in profile},
         "meal": {
             "id": meal["id"],
             "eaten_at": meal["eaten_at"],
@@ -44,6 +45,7 @@ def predict_and_store(owner: str, meal: dict):
         raise HTTPException(503, {"code": "model_not_connected", "message": "Your meal is saved. The prediction model has not been connected yet."})
     readings = storage.readings_before(owner, meal["eaten_at"], 2016)
     activity = storage.activity_before(owner, meal["eaten_at"], 2016)
+    profile = storage.get_record(owner, "PROFILE")
     if not readings:
         raise HTTPException(422, {"code": "cgm_history_required", "message": "Upload CGM history before requesting a prediction."})
     try:
@@ -54,7 +56,7 @@ def predict_and_store(owner: str, meal: dict):
             EndpointName=endpoint,
             ContentType="application/json",
             Accept="application/json",
-            Body=json.dumps(_payload(meal, readings, activity)).encode(),
+            Body=json.dumps(_payload(meal, readings, activity, profile)).encode(),
         )
         result = ModelOutput.model_validate_json(response["Body"].read())
     except (ValidationError, ValueError, KeyError, json.JSONDecodeError):

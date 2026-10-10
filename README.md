@@ -6,6 +6,7 @@ Glucose Compass is an AWS-hosted wellness research prototype for participant sig
 
 - Responsive React + TypeScript website, ready to share its typed API client with a later React Native app
 - Amazon Cognito hosted sign-in and registration; passwords are handled by Cognito and are never stored by this application
+- First-sign-in onboarding for name, age, height, weight, and diabetes-status context, stored privately in the participant's DynamoDB partition
 - Amazon API Gateway HTTP API with Cognito JWT authorization on participant routes
 - FastAPI services on AWS Lambda for food search, meal records, uploads, and prediction orchestration
 - Private, encrypted Amazon S3 buckets behind CloudFront for the website, raw CGM files, prepared data, and model artifacts

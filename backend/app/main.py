@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from mangum import Mangum
 from . import catalog, meal_photo, meal_text, model_adapter, storage
-from .schemas import ActivityImportInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, TextInput, timestamp
+from .schemas import ActivityImportInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, ProfileInput, TextInput, timestamp
 
 app = FastAPI(title="Glucose Compass API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -30,6 +30,26 @@ def health():
 @app.get("/me")
 def me(owner: str = Depends(identity)):
     return {"id": owner, "model_connected": bool(os.environ.get("MODEL_ENDPOINT_NAME")), "text_interpretation_enabled": bool(os.environ.get("BEDROCK_MODEL_ID"))}
+
+
+@app.get("/profile")
+def get_profile(owner: str = Depends(identity)):
+    found = storage.get_record(owner, "PROFILE")
+    return {"profile": storage.public_record(found) if found else None}
+
+
+@app.post("/profile")
+def save_profile(body: ProfileInput, owner: str = Depends(identity)):
+    now = timestamp(datetime.now(timezone.utc))
+    existing = storage.get_record(owner, "PROFILE")
+    values = body.model_dump()
+    values["first_name"] = values["first_name"].strip()
+    values["last_name"] = values["last_name"].strip()
+    values["height_cm"] = round(body.height if body.height_unit == "cm" else body.height * 2.54, 2)
+    values["weight_kg"] = round(body.weight if body.weight_unit == "kg" else body.weight * 0.45359237, 2)
+    saved = {**values, "created_at": existing.get("created_at", now) if existing else now, "updated_at": now}
+    storage.save_record(owner, "PROFILE", saved)
+    return storage.public_record(saved)
 
 
 @app.get("/foods")

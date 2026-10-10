@@ -43,6 +43,35 @@ class ActivityImportInput(Input):
     content_type: Literal["text/csv", "application/zip"]
 
 
+class ProfileInput(Input):
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    age: int = Field(ge=1, le=120)
+    height: float = Field(gt=0)
+    height_unit: Literal["cm", "in"]
+    weight: float = Field(gt=0)
+    weight_unit: Literal["kg", "lb"]
+    diabetes_status: Literal["type_1", "type_2", "unknown", "no_diabetes"]
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def require_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Enter a name.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_measurements(self):
+        height_cm = self.height if self.height_unit == "cm" else self.height * 2.54
+        weight_kg = self.weight if self.weight_unit == "kg" else self.weight * 0.45359237
+        if not 50 <= height_cm <= 250:
+            raise ValueError("Height must be between 50 and 250 centimeters.")
+        if not 20 <= weight_kg <= 500:
+            raise ValueError("Weight must be between 20 and 500 kilograms.")
+        return self
+
+
 class PhotoUploadInput(Input):
     filename: str = Field(min_length=1, max_length=200)
     content_type: Literal[

@@ -1,4 +1,4 @@
-import type { ActivityImportStatus, ActivityReading, Food, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, PhotoAnalysis, Page, Prediction } from '@glucose-compass/contracts';
+import type { ActivityImportStatus, ActivityReading, Food, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, PhotoAnalysis, Page, Prediction, Profile, ProfileInput } from '@glucose-compass/contracts';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -23,6 +23,8 @@ export function createApi(baseUrl: string, accessToken: () => Promise<string>) {
   }
   return {
     me: () => request<{ id: string; model_connected: boolean; text_interpretation_enabled: boolean }>('/me'),
+    profile: () => request<{ profile: Profile | null }>('/profile'),
+    saveProfile: (profile: ProfileInput) => request<Profile>('/profile', profile),
     foods: (query: string) => request<{ items: Food[] }>(`/foods?q=${encodeURIComponent(query)}`),
     interpret: (text: string) => request<Interpretation>('/meals/interpret', { text }),
     meals: () => request<Page<Meal>>('/meals'),

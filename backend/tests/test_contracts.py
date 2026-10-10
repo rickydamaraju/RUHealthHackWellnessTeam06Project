@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from app.schemas import ModelOutput, PhotoUploadInput
+from app.schemas import ModelOutput, PhotoUploadInput, ProfileInput
 
 
 def model_result(minutes=(30, 60, 90, 120)):
@@ -32,3 +32,10 @@ def test_meal_photo_accepts_only_bounded_web_images():
     with pytest.raises(ValidationError):
         PhotoUploadInput(filename="large.jpg", content_type="image/jpeg", size_bytes=16 * 1024 * 1024)
     assert PhotoUploadInput(filename="iphone.heic", content_type="image/heic", size_bytes=1024).content_type == "image/heic"
+
+
+def test_profile_accepts_supported_units_and_statuses():
+    profile = ProfileInput(first_name="Ada", last_name="Lovelace", age=30, height=66, height_unit="in", weight=140, weight_unit="lb", diabetes_status="unknown")
+    assert profile.first_name == "Ada"
+    with pytest.raises(ValidationError):
+        ProfileInput(first_name="Ada", last_name="Lovelace", age=30, height=10, height_unit="cm", weight=140, weight_unit="lb", diabetes_status="unknown")

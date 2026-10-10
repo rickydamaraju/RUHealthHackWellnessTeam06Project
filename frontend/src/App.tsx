@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import type { User, UserManager } from 'oidc-client-ts';
 import { Activity, ArrowDownToLine, ArrowRight, Camera, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, FileText, Footprints, HeartPulse, Image as ImageIcon, ImagePlus, LayoutDashboard, Leaf, LogOut, Plus, Search, ShieldCheck, Sparkles, Trash2, Upload, Utensils, X } from 'lucide-react';
 import { createApi, type Api } from '@glucose-compass/api-client';
-import type { ActivityImportStatus, ActivityReading, Food, ImportStatus, Interpretation, Meal, MealPhoto, MealPhotoContentType, Nutrition, PhotoAnalysis, Reading, RuntimeConfig } from '@glucose-compass/contracts';
+import type { ActivityImportStatus, ActivityReading, DiabetesStatus, Food, ImportStatus, Interpretation, Meal, MealPhoto, MealPhotoContentType, Nutrition, PhotoAnalysis, Profile, ProfileInput, Reading, RuntimeConfig } from '@glucose-compass/contracts';
 import { createAuth } from './auth';
 
 type View = 'overview' | 'meal' | 'history' | 'data' | 'activity';
@@ -32,6 +32,8 @@ export function App() {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [readings, setReadings] = useState<Reading[]>([]);
   const [activity, setActivity] = useState<ActivityReading[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [hasMoreMeals, setHasMoreMeals] = useState(false);
   const auth = useRef<UserManager | null>(null);
@@ -72,9 +74,11 @@ export function App() {
   const refresh = async () => {
     if (!api) return;
     try {
-      const [historyPage, cgm, movement] = await Promise.all([api.meals(), api.readings(), api.activity()]);
+      const [historyPage, cgm, movement, participant] = await Promise.all([api.meals(), api.readings(), api.activity(), api.profile()]);
       setMeals(historyPage.items); setHasMoreMeals(historyPage.has_more); setReadings(cgm.items); setActivity(movement.items);
+      setProfile(participant.profile);
     } catch (error) { setNotice(errorMessage(error)); }
+    finally { setProfileLoaded(true); }
   };
   useEffect(() => { void refresh(); }, [api]);
 
@@ -86,9 +90,9 @@ export function App() {
     if (auth.current && config) {
       try { await auth.current.revokeTokens(['refresh_token']); } catch { /* Local session is always cleared. */ }
       await auth.current.removeUser();
-      setUser(null); setMeals([]); setReadings([]); setActivity([]); setAccountOpen(false);
+      setUser(null); setMeals([]); setReadings([]); setActivity([]); setProfile(null); setProfileLoaded(false); setAccountOpen(false);
       location.assign(`${config.cognitoDomain}/logout?client_id=${encodeURIComponent(config.clientId)}&logout_uri=${encodeURIComponent(`${location.origin}/`)}`);
-    } else { setPreview(false); setMeals([]); setReadings([]); setActivity([]); setAccountOpen(false); }
+    } else { setPreview(false); setMeals([]); setReadings([]); setActivity([]); setProfile(null); setProfileLoaded(false); setAccountOpen(false); }
   };
   const saveMeal = async (saved: Meal) => { setMeals(previous => [saved, ...previous.filter(x => x.id !== saved.id)]); setView('history'); setNotice(preview ? 'Preview meal added for this session only.' : 'Your meal is saved.'); };
 
@@ -98,10 +102,13 @@ export function App() {
     <main className="welcome-grid"><div><span className="pill"><span className="dot" /> YOUR BODY. YOUR CONTEXT.</span><h1>A little more context.<br /><em>A clearer picture.</em></h1><p className="welcome-copy">Bring your meals and glucose history together. Discover the patterns that make your everyday experience yours.</p><div className="welcome-actions"><button className="primary" onClick={signIn} disabled={!config?.configured}>Sign in or create an account <ArrowRight size={18} /></button>{!config?.configured && <button className="secondary" onClick={() => setPreview(true)}>Explore the workspace</button>}</div>{!config?.configured && <p className="setup-note">Local preview · AWS sign-in is awaiting deployment.</p>}{notice && <p role="alert" className="notice">{notice}</p>}<div className="welcome-trust"><ShieldCheck size={18} /> Your journal belongs to you.</div></div><div className="welcome-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><Leaf className="hero-leaf" size={150} strokeWidth={.65} /><div className="floating-card"><span className="icon-box"><Utensils size={20} /></span><div><strong>Meal by meal.</strong><span>Build your personal picture.</span></div><Check size={18} /></div><div className="visual-caption">A space to understand<br /><em>your daily rhythm.</em></div></div></main><footer>Glucose Compass · RU Health Hackathon <span>Research prototype. Not for diagnosis or medication decisions.</span></footer>
   </div>;
 
+  if (user && api && !profileLoaded) return <div className="boot"><Leaf size={28} /><p>Preparing your profile…</p></div>;
+  if (user && api && !profile) return <Onboarding api={api} onSaved={setProfile} onSignOut={signOut} />;
+
   return <div className="app-shell">
     <aside className="sidebar"><Brand /><div className="workspace-label">YOUR WORKSPACE</div><nav aria-label="Main navigation">{([
       ['overview', LayoutDashboard, 'Overview'], ['meal', Utensils, 'Log a meal'], ['history', Clock3, 'Meal history'], ['data', Activity, 'Your CGM data'], ['activity', Footprints, 'Activity data'],
-    ] as const).map(([key, Icon, label]) => <button key={key} className={view === key ? 'nav-item active' : 'nav-item'} onClick={() => { setView(key); setNotice(''); setAccountOpen(false); }}><Icon size={19} /><span>{label}</span>{view === key && <span className="nav-dot" />}</button>)}</nav><div className="sidebar-bottom"><div className="privacy-note"><ShieldCheck size={20} /><strong>Personal by design</strong><p>Your meals and readings stay connected to your account.</p></div><div className="account-area">{accountOpen && <div className="account-menu" role="menu"><div><strong>{preview ? 'Preview workspace' : 'Signed in'}</strong><small>{preview ? 'Local demonstration' : String(user?.profile.email ?? 'Your private account')}</small></div><button role="menuitem" onClick={() => void signOut()}><LogOut size={16} />{preview ? 'Exit preview' : 'Sign out'}</button></div>}<button className="account-button" aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen(open => !open)}><span className="avatar">{preview ? 'P' : (user?.profile.email?.[0] ?? 'Y').toUpperCase()}</span><span><strong>{preview ? 'Preview workspace' : 'Your account'}</strong><small>{preview ? 'Open options' : String(user?.profile.email ?? 'Open profile')}</small></span><ChevronDown className={accountOpen ? 'account-chevron open' : 'account-chevron'} size={17} /></button></div></div></aside>
+    ] as const).map(([key, Icon, label]) => <button key={key} className={view === key ? 'nav-item active' : 'nav-item'} onClick={() => { setView(key); setNotice(''); setAccountOpen(false); }}><Icon size={19} /><span>{label}</span>{view === key && <span className="nav-dot" />}</button>)}</nav><div className="sidebar-bottom"><div className="privacy-note"><ShieldCheck size={20} /><strong>Personal by design</strong><p>Your meals and readings stay connected to your account.</p></div><div className="account-area">{accountOpen && <div className="account-menu" role="menu"><div><strong>{preview ? 'Preview workspace' : profile ? `${profile.first_name} ${profile.last_name}` : 'Signed in'}</strong><small>{preview ? 'Local demonstration' : String(user?.profile.email ?? 'Your private account')}</small></div><button role="menuitem" onClick={() => void signOut()}><LogOut size={16} />{preview ? 'Exit preview' : 'Sign out'}</button></div>}<button className="account-button" aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen(open => !open)}><span className="avatar">{preview ? 'P' : (profile?.first_name?.[0] ?? user?.profile.email?.[0] ?? 'Y').toUpperCase()}</span><span><strong>{preview ? 'Preview workspace' : profile?.first_name ?? 'Your account'}</strong><small>{preview ? 'Open options' : String(user?.profile.email ?? 'Open profile')}</small></span><ChevronDown className={accountOpen ? 'account-chevron open' : 'account-chevron'} size={17} /></button></div></div></aside>
     <div className="main-shell"><header className="topbar"><span>YOUR DAILY RHYTHM</span><div><span className="dot" /> {preview ? 'Local preview' : 'Personal journal'}<span className="topbar-divider" />{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div></header>
       <main className="content">{preview && <div className="preview-banner"><CircleHelp size={17} /><span>Preview workspace. Sign-in, uploads, and cloud saving will work after AWS deployment. Preview entries disappear when you leave.</span></div>}{notice && <div role="status" className="notice"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice('')}><X size={16} /></button></div>}
       {view === 'overview' && <><div className="page-heading"><div><p className="eyebrow">ONE MEAL AT A TIME</p><h1>Your daily picture</h1><p>A little context for the way your body responds.</p></div><button className="primary" onClick={() => setView('meal')}><Plus size={18} /> Log a meal</button></div>
@@ -117,6 +124,24 @@ export function App() {
       <footer className="app-footer"><span>Made for your everyday understanding.</span><span>Research prototype · No diagnosis or medication advice</span></footer></main>
     </div>
   </div>;
+}
+
+function Onboarding({ api, onSaved, onSignOut }: { api: Api; onSaved: (profile: Profile) => void; onSignOut: () => Promise<void> }) {
+  const [form, setForm] = useState<ProfileInput>({ first_name: '', last_name: '', age: 18, height: 170, height_unit: 'cm', weight: 70, weight_unit: 'kg', diabetes_status: 'unknown' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const update = <K extends keyof ProfileInput>(key: K, value: ProfileInput[K]) => setForm(current => ({ ...current, [key]: value }));
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setSaving(true); setError('');
+    try { onSaved(await api.saveProfile(form)); }
+    catch (problem) { setError(errorMessage(problem)); }
+    finally { setSaving(false); }
+  };
+  const statuses: { value: DiabetesStatus; label: string }[] = [
+    { value: 'type_1', label: 'Type 1' }, { value: 'type_2', label: 'Type 2' },
+    { value: 'no_diabetes', label: 'No diabetes' }, { value: 'unknown', label: 'Unknown' },
+  ];
+  return <div className="onboarding"><header><Brand /><button className="text-button" onClick={() => void onSignOut()}><LogOut size={16} /> Sign out</button></header><main><section className="onboarding-copy"><span className="pill"><span className="dot" /> YOUR STARTING POINT</span><h1>Let’s personalize<br /><em>your experience.</em></h1><p>These details help your future model understand your individual context. You can still review every meal and prediction before using it.</p><div className="onboarding-private"><ShieldCheck size={21} /><span><strong>Private to your account</strong><small>Saved in your protected AWS data partition.</small></span></div></section><form className="onboarding-form" onSubmit={submit}><div><p className="eyebrow">A FEW DETAILS ABOUT YOU</p><h2>Complete your profile</h2><p>This takes about a minute.</p></div>{error && <div className="notice" role="alert">{error}</div>}<div className="form-two"><label>First name<input required autoComplete="given-name" maxLength={80} value={form.first_name} onChange={event => update('first_name', event.target.value)} /></label><label>Last name<input required autoComplete="family-name" maxLength={80} value={form.last_name} onChange={event => update('last_name', event.target.value)} /></label></div><label>Age<input required type="number" min={1} max={120} inputMode="numeric" value={form.age} onChange={event => update('age', Number(event.target.value))} /></label><div className="form-two"><label>Height<div className="measure-field"><input required type="number" min={form.height_unit === 'cm' ? 50 : 20} max={form.height_unit === 'cm' ? 250 : 100} step="0.1" inputMode="decimal" value={form.height} onChange={event => update('height', Number(event.target.value))} /><select aria-label="Height unit" value={form.height_unit} onChange={event => update('height_unit', event.target.value as 'cm' | 'in')}><option value="cm">cm</option><option value="in">inches</option></select></div></label><label>Weight<div className="measure-field"><input required type="number" min={form.weight_unit === 'kg' ? 20 : 44} max={form.weight_unit === 'kg' ? 500 : 1100} step="0.1" inputMode="decimal" value={form.weight} onChange={event => update('weight', Number(event.target.value))} /><select aria-label="Weight unit" value={form.weight_unit} onChange={event => update('weight_unit', event.target.value as 'kg' | 'lb')}><option value="kg">kg</option><option value="lb">pounds</option></select></div></label></div><fieldset><legend>Which option describes you?</legend><div className="status-options">{statuses.map(option => <label key={option.value} className={form.diabetes_status === option.value ? 'selected' : ''}><input type="radio" name="diabetes-status" value={option.value} checked={form.diabetes_status === option.value} onChange={() => update('diabetes_status', option.value)} /><span>{option.label}</span></label>)}</div></fieldset><button className="primary full-width" type="submit" disabled={saving}><Check size={18} />{saving ? 'Saving your profile…' : 'Continue to my dashboard'}</button><small className="onboarding-note">Research prototype · This information supports wellness personalization and is not used to diagnose a condition.</small></form></main></div>;
 }
 
 function Brand() { return <div className="brand"><span><Leaf size={23} strokeWidth={1.7} /></span><strong>glucose compass<span className="brand-period">.</span></strong></div>; }
