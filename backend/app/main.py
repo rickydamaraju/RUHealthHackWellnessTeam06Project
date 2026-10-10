@@ -8,7 +8,7 @@ from mangum import Mangum
 from . import catalog, meal_text, model_adapter, storage
 from .schemas import ImportInput, MealInput, PredictionInput, TextInput, timestamp
 
-app = FastAPI(title="Mini Sathi API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="Glucose Compass API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 def identity(request: Request) -> str:

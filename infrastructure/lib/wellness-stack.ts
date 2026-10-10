@@ -20,12 +20,12 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as bedrock from 'aws-cdk-lib/aws-bedrock';
 
-interface Props extends StackProps { stage: string; bedrockModelId?: string; modelEndpointName?: string }
+interface Props extends StackProps { stage: string; bedrockModelId?: string; modelEndpointName?: string; createCognitoDomain?: boolean }
 
 export class WellnessStack extends Stack {
   constructor(scope: Construct, id: string, props: Props) {
     super(scope, id, props);
-    Tags.of(this).add('Project', 'MiniSathi');
+    Tags.of(this).add('Project', 'GlucoseCompass');
     Tags.of(this).add('Stage', props.stage);
     const repo = path.resolve(__dirname, '../..');
     const commonBucket = { blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, encryption: s3.BucketEncryption.S3_MANAGED, enforceSSL: true, removalPolicy: RemovalPolicy.RETAIN };
@@ -64,9 +64,9 @@ export class WellnessStack extends Stack {
       oAuth: { flows: { authorizationCodeGrant: true }, scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE, cognito.OAuthScope.resourceServer(resourceServer, accessScope)],
         callbackUrls: allowedOrigins.map(url => `${url}/auth/callback`), logoutUrls: allowedOrigins.map(url => `${url}/`) },
     });
-    const domain = users.addDomain('Domain', { cognitoDomain: { domainPrefix: `sathi-${this.account}-${this.region}-${props.stage}` } });
+    const domain = props.createCognitoDomain === false ? undefined : users.addDomain('Domain', { cognitoDomain: { domainPrefix: `glucose-compass-${this.account}-${this.region}-${props.stage}` } });
     const guardrail = new bedrock.CfnGuardrail(this, 'WellnessGuardrail', {
-      name: `sathi-wellness-${props.stage}`, blockedInputMessaging: 'Please describe a meal.', blockedOutputsMessaging: 'An explanation is unavailable.',
+      name: `glucose-compass-wellness-${props.stage}`, blockedInputMessaging: 'Please describe a meal.', blockedOutputsMessaging: 'An explanation is unavailable.',
       topicPolicyConfig: { topicsConfig: [
         { name: 'Diagnosis', type: 'DENY', definition: 'Claims that a person has or does not have a medical condition based on glucose readings or predictions.', examples: ['This glucose prediction proves you have diabetes.'] },
         { name: 'MedicationDosing', type: 'DENY', definition: 'Instructions to start, stop, increase, decrease, or time a medication dose based on an individual glucose prediction.', examples: ['Increase your insulin dose before this meal.'] },
@@ -112,7 +112,7 @@ export class WellnessStack extends Stack {
       destinationBucket: website, distribution, distributionPaths: ['/*'],
       sources: [deployment.Source.asset(path.join(repo, 'frontend/dist')), deployment.Source.jsonData('config.json', {
         apiUrl: api.apiEndpoint, region: this.region, userPoolId: users.userPoolId, clientId: client.userPoolClientId,
-        cognitoDomain: domain.baseUrl(), configured: true,
+        cognitoDomain: domain?.baseUrl() ?? '', configured: Boolean(domain),
       })],
     });
     new deployment.BucketDeployment(this, 'PublishCatalog', { destinationBucket: files, destinationKeyPrefix: 'catalog/v1', sources: [deployment.Source.asset(path.join(repo, 'backend/app/data'))], prune: false });

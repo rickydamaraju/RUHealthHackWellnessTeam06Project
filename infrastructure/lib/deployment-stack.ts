@@ -15,11 +15,11 @@ export class DeploymentStack extends Stack {
       buildSpec: codebuild.BuildSpec.fromObject({ version: '0.2', phases: {
         install: { 'runtime-versions': { nodejs: 22, python: '3.12' }, commands: ['npm ci', 'python -m pip install -r backend/requirements-dev.txt'] },
         pre_build: { commands: ['npm run check', 'PYTHONPATH=backend python -m pytest backend/tests -q', 'npm run build'] },
-        build: { commands: [`npx cdk deploy Sathi-${props.stage} --app 'npx tsx infrastructure/bin/app.ts' -c stage=${props.stage} --require-approval never`] },
+        build: { commands: [`npx cdk deploy GlucoseCompass-${props.stage} --app 'npx tsx infrastructure/bin/app.ts' -c stage=${props.stage} --require-approval never`] },
       } }),
     });
     project.addToRolePolicy(new iam.PolicyStatement({ actions: ['sts:AssumeRole'], resources: [`arn:${this.partition}:iam::${this.account}:role/cdk-hnb659fds-*-role-${this.account}-${this.region}`] }));
-    project.addToRolePolicy(new iam.PolicyStatement({ actions: ['cloudformation:DescribeStacks'], resources: [`arn:${this.partition}:cloudformation:${this.region}:${this.account}:stack/CDKToolkit/*`, `arn:${this.partition}:cloudformation:${this.region}:${this.account}:stack/Sathi-${props.stage}/*`] }));
+    project.addToRolePolicy(new iam.PolicyStatement({ actions: ['cloudformation:DescribeStacks'], resources: [`arn:${this.partition}:cloudformation:${this.region}:${this.account}:stack/CDKToolkit/*`, `arn:${this.partition}:cloudformation:${this.region}:${this.account}:stack/GlucoseCompass-${props.stage}/*`] }));
     project.addToRolePolicy(new iam.PolicyStatement({ actions: ['ssm:GetParameter'], resources: [`arn:${this.partition}:ssm:${this.region}:${this.account}:parameter/cdk-bootstrap/hnb659fds/version`] }));
     new codepipeline.Pipeline(this, 'Pipeline', { pipelineType: codepipeline.PipelineType.V2, stages: [
       { stageName: 'Source', actions: [new actions.CodeStarConnectionsSourceAction({ actionName: 'GitHub', owner: 'rickydamaraju', repo: 'RUHealthHackWellnessTeam06Project', branch: 'main', connectionArn: props.connectionArn, output: source })] },

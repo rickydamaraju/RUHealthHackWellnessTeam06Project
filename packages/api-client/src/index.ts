@@ -1,4 +1,4 @@
-import type { Food, Meal, MealInput, Reading, ImportStatus, Interpretation, Page, Prediction } from '@sathi/contracts';
+import type { Food, Meal, MealInput, Reading, ImportStatus, Interpretation, Page, Prediction } from '@glucose-compass/contracts';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }

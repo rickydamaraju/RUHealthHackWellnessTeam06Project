@@ -1,5 +1,5 @@
 import { UserManager, WebStorageStateStore } from 'oidc-client-ts';
-import type { RuntimeConfig } from '@sathi/contracts';
+import type { RuntimeConfig } from '@glucose-compass/contracts';
 
 export function createAuth(config: RuntimeConfig) {
   const origin = window.location.origin;

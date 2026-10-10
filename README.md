@@ -1,6 +1,6 @@
-# Predict My Glucose Response
+# Glucose Compass — Predict My Glucose Response
 
-Mini Sathi is an AWS-hosted wellness research prototype for participant sign-in, searchable meal logging, CGM CSV uploads, and future person-specific glucose prediction. It deliberately avoids diagnostic or medication claims.
+Glucose Compass is an AWS-hosted wellness research prototype for participant sign-in, searchable meal logging, CGM CSV uploads, and future person-specific glucose prediction. It deliberately avoids diagnostic or medication claims.
 
 ## What is implemented
 
