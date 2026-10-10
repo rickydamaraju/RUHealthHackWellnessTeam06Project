@@ -4,8 +4,9 @@ export interface RuntimeConfig {
 }
 export interface Nutrition { carbs_g: number; protein_g: number; fat_g: number; fiber_g: number; calories: number }
 export interface Food { id: string; name: string; per_100g: Nutrition; portions: { label: string; grams: number }[] }
-export interface MealInput { request_id: string; description: string; eaten_at: string; entry_method: 'search' | 'text'; foods: { food_id: string; grams: number }[] }
-export interface Meal { id: string; description: string; eaten_at: string; created_at: string; nutrition: Nutrition; foods: { food_id: string; name: string; grams: number; nutrition: Nutrition }[] }
+export interface MealPhoto { id: string; filename: string; content_type: 'image/jpeg' | 'image/png' | 'image/webp'; size_bytes: number; status: 'awaiting_upload' | 'ready' }
+export interface MealInput { request_id: string; description: string; eaten_at: string; entry_method: 'search' | 'text' | 'photo'; foods: { food_id: string; grams: number }[]; photo_id?: string }
+export interface Meal { id: string; description: string; eaten_at: string; created_at: string; nutrition: Nutrition; foods: { food_id: string; name: string; grams: number; nutrition: Nutrition }[]; photo?: MealPhoto }
 export interface Reading { timestamp: string; glucose_mg_dl: number }
 export interface ImportStatus { id: string; filename: string; status: 'awaiting_upload' | 'processing' | 'ready' | 'failed'; error?: string; reading_count?: number }
 export interface Interpretation { items: { name: string; grams: number | null; matches: Food[] }[]; requires_confirmation: true }

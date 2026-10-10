@@ -81,6 +81,7 @@ export class WellnessStack extends Stack {
     });
     records.grantReadWriteData(apiFunction);
     apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['s3:PutObject'], resources: [files.arnForObjects('users/*')] }));
+    apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [files.arnForObjects('users/*')] }));
     models.grantRead(apiFunction);
     apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['bedrock:ApplyGuardrail'], resources: [guardrail.attrGuardrailArn] }));
     if (props.bedrockModelId) apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: [`arn:${this.partition}:bedrock:${this.region}::foundation-model/${props.bedrockModelId}`] }));

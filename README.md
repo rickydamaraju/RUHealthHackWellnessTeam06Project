@@ -1,6 +1,6 @@
 # Glucose Compass — Predict My Glucose Response
 
-Glucose Compass is an AWS-hosted wellness research prototype for participant sign-in, searchable meal logging, CGM CSV uploads, and future person-specific glucose prediction. It deliberately avoids diagnostic or medication claims.
+Glucose Compass is an AWS-hosted wellness research prototype for participant sign-in, searchable meal and photo logging, CGM CSV uploads, and future person-specific glucose prediction. It deliberately avoids diagnostic or medication claims.
 
 ## What is implemented
 
@@ -12,6 +12,7 @@ Glucose Compass is an AWS-hosted wellness research prototype for participant sig
 - DynamoDB participant partitions for meals, CGM readings, imports, and predictions
 - S3 event → SQS → Lambda processing for validated, retry-safe CGM imports
 - USDA FNDDS 2021–2023 catalog with 5,431 foods and confirmed portion-based nutrition
+- Mobile camera and image upload for meal photos, stored privately in the participant's S3 path and linked to the meal record
 - Amazon Bedrock for optional meal-text extraction and a Guardrail that blocks diagnosis and medication-dosing language
 - A SageMaker model endpoint adapter with validated prediction and uncertainty contracts
 - AWS CDK infrastructure and an optional GitHub-to-CodePipeline deployment stack

@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from app.schemas import ModelOutput
+from app.schemas import ModelOutput, PhotoUploadInput
 
 
 def model_result(minutes=(30, 60, 90, 120)):
@@ -22,3 +22,12 @@ def test_accepts_complete_prediction_horizons():
 def test_rejects_missing_or_extra_prediction_horizons():
     with pytest.raises(ValidationError):
         ModelOutput.model_validate(model_result((30, 60, 90, 100)))
+
+
+def test_meal_photo_accepts_only_bounded_web_images():
+    valid = PhotoUploadInput(filename="lunch.jpg", content_type="image/jpeg", size_bytes=1024)
+    assert valid.content_type == "image/jpeg"
+    with pytest.raises(ValidationError):
+        PhotoUploadInput(filename="meal.svg", content_type="image/svg+xml", size_bytes=1024)
+    with pytest.raises(ValidationError):
+        PhotoUploadInput(filename="large.jpg", content_type="image/jpeg", size_bytes=9 * 1024 * 1024)

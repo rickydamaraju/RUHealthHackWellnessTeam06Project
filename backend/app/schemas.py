@@ -18,7 +18,8 @@ class MealInput(Input):
     description: str = Field(default="", max_length=2000)
     eaten_at: datetime
     foods: list[Portion] = Field(min_length=1, max_length=30)
-    entry_method: Literal["search", "text"] = "search"
+    entry_method: Literal["search", "text", "photo"] = "search"
+    photo_id: UUID | None = None
 
     @field_validator("eaten_at")
     @classmethod
@@ -35,6 +36,12 @@ class TextInput(Input):
 class ImportInput(Input):
     filename: str = Field(min_length=1, max_length=200, pattern=r"(?i)^.*\.csv$")
     unit: Literal["mg/dL", "mmol/L"]
+
+
+class PhotoUploadInput(Input):
+    filename: str = Field(min_length=1, max_length=200)
+    content_type: Literal["image/jpeg", "image/png", "image/webp"]
+    size_bytes: int = Field(gt=0, le=8 * 1024 * 1024)
 
 
 class PredictionInput(Input):

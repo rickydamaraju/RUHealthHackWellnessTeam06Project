@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from mangum import Mangum
 from . import catalog, meal_text, model_adapter, storage
-from .schemas import ImportInput, MealInput, PredictionInput, TextInput, timestamp
+from .schemas import ImportInput, MealInput, PhotoUploadInput, PredictionInput, TextInput, timestamp
 
 app = FastAPI(title="Glucose Compass API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -51,6 +51,12 @@ def create_meal(body: MealInput, owner: str = Depends(identity)):
         if existing["request_hash"] != request_hash:
             raise HTTPException(409, "This save identifier was already used for a different meal.")
         return storage.public_record(existing)
+    photo = None
+    if body.photo_id:
+        photo_record = storage.get_record(owner, f"PHOTO#{body.photo_id}")
+        if not photo_record or photo_record.get("status") != "ready":
+            raise HTTPException(422, "Upload the selected meal photo before saving the meal.")
+        photo = {key: photo_record[key] for key in ("id", "filename", "content_type", "size_bytes", "status")}
     foods, nutrition = catalog.meal_nutrition(body.foods)
     data = {
         "id": str(body.request_id), "description": body.description.strip(),
@@ -58,6 +64,8 @@ def create_meal(body: MealInput, owner: str = Depends(identity)):
         "foods": foods, "nutrition": nutrition, "entry_method": body.entry_method,
         "request_hash": request_hash,
     }
+    if photo:
+        data["photo"] = photo
     result = storage.save_meal(owner, data)
     if result is None:
         existing = storage.get_record(owner, key)
@@ -79,6 +87,42 @@ def meal(meal_id: UUID, owner: str = Depends(identity)):
     if not found:
         raise HTTPException(404, "Meal not found.")
     return storage.public_record(found)
+
+
+@app.post("/meal-photos")
+def start_meal_photo(body: PhotoUploadInput, owner: str = Depends(identity)):
+    photo_id = str(uuid4())
+    extension = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[body.content_type]
+    key = f"users/{owner}/meal-photos/{photo_id}.{extension}"
+    data = {
+        "id": photo_id, "filename": body.filename, "content_type": body.content_type,
+        "size_bytes": body.size_bytes, "status": "awaiting_upload",
+        "created_at": timestamp(datetime.now(timezone.utc)), "object_key": key,
+    }
+    storage.save_record(owner, f"PHOTO#{photo_id}", data, create_only=True)
+    upload = storage.s3().generate_presigned_post(
+        Bucket=os.environ["DATA_BUCKET"], Key=key,
+        Fields={"Content-Type": body.content_type},
+        Conditions=[{"Content-Type": body.content_type}, ["content-length-range", 1, 8 * 1024 * 1024]],
+        ExpiresIn=300,
+    )
+    return {"photo": storage.public_record(data), "upload": upload}
+
+
+@app.post("/meal-photos/{photo_id}/complete")
+def complete_meal_photo(photo_id: UUID, owner: str = Depends(identity)):
+    record = storage.get_record(owner, f"PHOTO#{photo_id}")
+    if not record:
+        raise HTTPException(404, "Meal photo not found.")
+    try:
+        uploaded = storage.s3().head_object(Bucket=os.environ["DATA_BUCKET"], Key=record["object_key"])
+    except Exception:
+        raise HTTPException(409, "The meal photo has not finished uploading. Please try again.") from None
+    if uploaded.get("ContentType") != record["content_type"] or uploaded.get("ContentLength", 0) > 8 * 1024 * 1024:
+        raise HTTPException(422, "The uploaded image type or size is not supported.")
+    ready = {**record, "status": "ready", "size_bytes": uploaded["ContentLength"]}
+    storage.save_record(owner, f"PHOTO#{photo_id}", ready)
+    return storage.public_record(ready)
 
 
 @app.post("/imports")
