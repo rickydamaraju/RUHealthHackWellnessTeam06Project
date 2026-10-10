@@ -99,6 +99,7 @@ export class WellnessStack extends Stack {
     const deadLetterQueue = new sqs.Queue(this, 'ImportDLQ', { retentionPeriod: Duration.days(14), enforceSSL: true });
     const imports = new sqs.Queue(this, 'ImportQueue', { visibilityTimeout: Duration.minutes(12), enforceSSL: true, deadLetterQueue: { queue: deadLetterQueue, maxReceiveCount: 3 } });
     files.addEventNotification(s3.EventType.OBJECT_CREATED, new SqsDestination(imports), { prefix: 'users/', suffix: '.csv' });
+    files.addEventNotification(s3.EventType.OBJECT_CREATED, new SqsDestination(imports), { prefix: 'users/', suffix: '.zip' });
     const worker = new lambda.DockerImageFunction(this, 'ImportWorker', {
       code: lambda.DockerImageCode.fromImageAsset(path.join(repo, 'backend'), { platform: ecrAssets.Platform.LINUX_AMD64, cmd: ['app.import_worker.handler'] }),
       memorySize: 1024, timeout: Duration.minutes(2), environment: { TABLE_NAME: records.tableName, DATA_BUCKET: files.bucketName },

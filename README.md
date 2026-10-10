@@ -1,6 +1,6 @@
 # Glucose Compass — Predict My Glucose Response
 
-Glucose Compass is an AWS-hosted wellness research prototype for participant sign-in, searchable meal and photo logging, CGM CSV uploads, and future person-specific glucose prediction. It deliberately avoids diagnostic or medication claims.
+Glucose Compass is an AWS-hosted wellness research prototype for participant sign-in, searchable meal and photo logging, CGM and Apple Watch data uploads, and future person-specific glucose prediction. It deliberately avoids diagnostic or medication claims.
 
 ## What is implemented
 
@@ -9,10 +9,11 @@ Glucose Compass is an AWS-hosted wellness research prototype for participant sig
 - Amazon API Gateway HTTP API with Cognito JWT authorization on participant routes
 - FastAPI services on AWS Lambda for food search, meal records, uploads, and prediction orchestration
 - Private, encrypted Amazon S3 buckets behind CloudFront for the website, raw CGM files, prepared data, and model artifacts
-- DynamoDB participant partitions for meals, CGM readings, imports, and predictions
-- S3 event → SQS → Lambda processing for validated, retry-safe CGM imports
+- DynamoDB participant partitions for meals, CGM readings, activity intervals, imports, and predictions
+- S3 event → SQS → Lambda processing for validated, retry-safe CGM and activity imports
 - USDA FNDDS 2021–2023 catalog with 5,431 foods and confirmed portion-based nutrition
 - Mobile camera and image upload for JPEG, PNG, HEIC/HEIF, AVIF, WebP, GIF, BMP, and TIFF meal photos; originals stay private in S3, supported files are normalized for Amazon Nova Lite, and editable nutrition estimates come from USDA data
+- Apple Health `export.zip` and activity CSV import for steps, active energy, and heart rate, aggregated into five minute model-ready intervals
 - Amazon Bedrock for optional meal-text extraction and a Guardrail that blocks diagnosis and medication-dosing language
 - A SageMaker model endpoint adapter with validated prediction and uncertainty contracts
 - AWS CDK infrastructure and an optional GitHub-to-CodePipeline deployment stack
@@ -87,6 +88,7 @@ The pipeline watches `rickydamaraju/RUHealthHackWellnessTeam06Project` on `main`
 ## V1 data and safety boundaries
 
 - Accepted CGM file: UTF-8 CSV with `timestamp,glucose`, timezone-aware ISO 8601 timestamps, one selected unit, at most 10 MB and 20,000 readings
+- Accepted activity files: Apple Health `export.zip`, or UTF-8 CSV with `timestamp` and at least one of `steps`, `active_energy_kcal`, or `heart_rate_bpm`; at most 50 MB
 - Meal nutrition is an estimate derived from the participant-confirmed USDA item and gram amount
 - Prediction is unavailable until a real model endpoint is configured; no synthetic prediction is shown as participant data
 - Bedrock Guardrails screen explanatory wording. Numeric model outputs are preserved and model/schema failures return a clear unavailable response

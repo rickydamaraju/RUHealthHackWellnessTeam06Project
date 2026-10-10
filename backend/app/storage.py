@@ -82,5 +82,13 @@ def readings_before(owner: str, cutoff: str, limit=2016):
     return unpack(response.get("Items", []))
 
 
+def activity_before(owner: str, cutoff: str, limit=2016):
+    response = table().query(
+        KeyConditionExpression=Key("pk").eq(f"USER#{owner}") & Key("sk").between("ACTIVITY#", f"ACTIVITY#{cutoff}"),
+        Limit=limit, ScanIndexForward=False, ConsistentRead=True,
+    )
+    return unpack(response.get("Items", []))
+
+
 def public_record(item: dict):
-    return {key: value for key, value in item.items() if key not in {"pk", "sk", "object_key", "request_hash"}}
+    return {key: value for key, value in item.items() if key not in {"pk", "sk", "object_key", "preview_key", "request_hash"}}

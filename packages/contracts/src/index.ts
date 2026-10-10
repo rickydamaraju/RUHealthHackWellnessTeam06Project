@@ -10,8 +10,10 @@ export interface MealInput { request_id: string; description: string; eaten_at: 
 export interface Meal { id: string; description: string; eaten_at: string; created_at: string; nutrition: Nutrition; foods: { food_id: string; name: string; grams: number; nutrition: Nutrition }[]; photo?: MealPhoto }
 export interface Reading { timestamp: string; glucose_mg_dl: number }
 export interface ImportStatus { id: string; filename: string; status: 'awaiting_upload' | 'processing' | 'ready' | 'failed'; error?: string; reading_count?: number }
+export interface ActivityReading { timestamp: string; steps?: number; active_energy_kcal?: number; heart_rate_bpm?: number }
+export interface ActivityImportStatus extends ImportStatus { content_type: 'text/csv' | 'application/zip' }
 export interface Interpretation { items: { name: string; grams: number | null; matches: Food[] }[]; requires_confirmation: true }
-export interface PhotoAnalysis { items: { name: string; grams: number; confidence: number; matches: Food[] }[]; requires_confirmation: true }
+export interface PhotoAnalysis { items: { name: string; grams: number; confidence: number; matches: Food[] }[]; requires_confirmation: true; preview_url: string }
 export interface Page<T> { items: T[]; has_more: boolean }
 export interface Prediction {
   id: string; meal_id: string; created_at: string; model_version: string;

@@ -45,11 +45,10 @@ def _normalize_image(image: bytes, content_type: str):
         raise HTTPException(422, "This file could not be opened as an image. Try exporting it as JPEG or PNG.") from None
 
 
-def analyze(image: bytes, content_type: str):
+def analyze_jpeg(image: bytes):
     model_id = os.environ.get("BEDROCK_MODEL_ID")
     if not model_id:
         raise HTTPException(503, "Photo analysis is not connected yet.")
-    image, image_format = _normalize_image(image, content_type)
     prompt = (
         'Analyze this meal photo and return JSON only in this exact form: '
         '{"foods":[{"name":"visible food","search_term":"simple USDA food term",'
@@ -67,7 +66,7 @@ def analyze(image: bytes, content_type: str):
             modelId=model_id,
             system=[{"text": "You identify foods for a wellness meal journal. Output valid JSON only."}],
             messages=[{"role": "user", "content": [
-                {"image": {"format": image_format, "source": {"bytes": image}}},
+                {"image": {"format": "jpeg", "source": {"bytes": image}}},
                 {"text": prompt},
             ]}],
             inferenceConfig={"maxTokens": 1000, "temperature": 0},
@@ -95,3 +94,10 @@ def analyze(image: bytes, content_type: str):
     if not any(item["matches"] for item in items):
         raise HTTPException(422, "Foods were visible, but none matched the USDA catalog. Try a clearer photo or use food search.")
     return {"items": items, "requires_confirmation": True}
+
+
+def analyze(image: bytes, content_type: str):
+    if not os.environ.get("BEDROCK_MODEL_ID"):
+        raise HTTPException(503, "Photo analysis is not connected yet.")
+    normalized, _ = _normalize_image(image, content_type)
+    return analyze_jpeg(normalized)

@@ -38,6 +38,11 @@ class ImportInput(Input):
     unit: Literal["mg/dL", "mmol/L"]
 
 
+class ActivityImportInput(Input):
+    filename: str = Field(min_length=1, max_length=200, pattern=r"(?i)^.*\.(csv|zip)$")
+    content_type: Literal["text/csv", "application/zip"]
+
+
 class PhotoUploadInput(Input):
     filename: str = Field(min_length=1, max_length=200)
     content_type: Literal[

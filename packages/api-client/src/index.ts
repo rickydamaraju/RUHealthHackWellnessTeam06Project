@@ -1,4 +1,4 @@
-import type { Food, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, PhotoAnalysis, Page, Prediction } from '@glucose-compass/contracts';
+import type { ActivityImportStatus, ActivityReading, Food, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, PhotoAnalysis, Page, Prediction } from '@glucose-compass/contracts';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -30,9 +30,13 @@ export function createApi(baseUrl: string, accessToken: () => Promise<string>) {
     startMealPhoto: (filename: string, contentType: MealPhoto['content_type'], sizeBytes: number) => request<{ photo: MealPhoto; upload: { url: string; fields: Record<string, string> } }>('/meal-photos', { filename, content_type: contentType, size_bytes: sizeBytes }),
     completeMealPhoto: (photoId: string) => request<MealPhoto>(`/meal-photos/${encodeURIComponent(photoId)}/complete`, {}),
     analyzeMealPhoto: (photoId: string) => request<PhotoAnalysis>(`/meal-photos/${encodeURIComponent(photoId)}/analyze`, {}),
+    mealPhotoPreview: (photoId: string) => request<{ preview_url: string }>(`/meal-photos/${encodeURIComponent(photoId)}/preview`),
     readings: () => request<Page<Reading>>('/cgm'),
     startImport: (filename: string, unit: 'mg/dL' | 'mmol/L') => request<{ import: ImportStatus; upload: { url: string; fields: Record<string, string> } }>('/imports', { filename, unit }),
     importStatus: (id: string) => request<ImportStatus>(`/imports/${encodeURIComponent(id)}`),
+    activity: () => request<Page<ActivityReading>>('/activity'),
+    startActivityImport: (filename: string, contentType: 'text/csv' | 'application/zip') => request<{ import: ActivityImportStatus; upload: { url: string; fields: Record<string, string> } }>('/activity-imports', { filename, content_type: contentType }),
+    activityImportStatus: (id: string) => request<ActivityImportStatus>(`/activity-imports/${encodeURIComponent(id)}`),
     predict: (mealId: string) => request<Prediction>('/predictions', { meal_id: mealId }),
   };
 }

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { User, UserManager } from 'oidc-client-ts';
-import { Activity, ArrowDownToLine, ArrowRight, Camera, Check, ChevronRight, CircleHelp, Clock3, FileText, Image as ImageIcon, ImagePlus, LayoutDashboard, Leaf, LogOut, Plus, Search, ShieldCheck, Sparkles, Trash2, Upload, Utensils, X } from 'lucide-react';
+import { Activity, ArrowDownToLine, ArrowRight, Camera, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, FileText, Footprints, HeartPulse, Image as ImageIcon, ImagePlus, LayoutDashboard, Leaf, LogOut, Plus, Search, ShieldCheck, Sparkles, Trash2, Upload, Utensils, X } from 'lucide-react';
 import { createApi, type Api } from '@glucose-compass/api-client';
-import type { Food, ImportStatus, Interpretation, Meal, MealPhoto, MealPhotoContentType, Nutrition, PhotoAnalysis, Reading, RuntimeConfig } from '@glucose-compass/contracts';
+import type { ActivityImportStatus, ActivityReading, Food, ImportStatus, Interpretation, Meal, MealPhoto, MealPhotoContentType, Nutrition, PhotoAnalysis, Reading, RuntimeConfig } from '@glucose-compass/contracts';
 import { createAuth } from './auth';
 
-type View = 'overview' | 'meal' | 'history' | 'data';
+type View = 'overview' | 'meal' | 'history' | 'data' | 'activity';
 const emptyNutrition = (): Nutrition => ({ carbs_g: 0, protein_g: 0, fat_g: 0, fiber_g: 0, calories: 0 });
 const localTime = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 const friendlyDate = (value: string) => new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -31,6 +31,8 @@ export function App() {
   const [notice, setNotice] = useState('');
   const [meals, setMeals] = useState<Meal[]>([]);
   const [readings, setReadings] = useState<Reading[]>([]);
+  const [activity, setActivity] = useState<ActivityReading[]>([]);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [hasMoreMeals, setHasMoreMeals] = useState(false);
   const auth = useRef<UserManager | null>(null);
   const initialized = useRef(false);
@@ -70,8 +72,8 @@ export function App() {
   const refresh = async () => {
     if (!api) return;
     try {
-      const [historyPage, cgm] = await Promise.all([api.meals(), api.readings()]);
-      setMeals(historyPage.items); setHasMoreMeals(historyPage.has_more); setReadings(cgm.items);
+      const [historyPage, cgm, movement] = await Promise.all([api.meals(), api.readings(), api.activity()]);
+      setMeals(historyPage.items); setHasMoreMeals(historyPage.has_more); setReadings(cgm.items); setActivity(movement.items);
     } catch (error) { setNotice(errorMessage(error)); }
   };
   useEffect(() => { void refresh(); }, [api]);
@@ -84,9 +86,9 @@ export function App() {
     if (auth.current && config) {
       try { await auth.current.revokeTokens(['refresh_token']); } catch { /* Local session is always cleared. */ }
       await auth.current.removeUser();
-      setUser(null); setMeals([]); setReadings([]);
+      setUser(null); setMeals([]); setReadings([]); setActivity([]); setAccountOpen(false);
       location.assign(`${config.cognitoDomain}/logout?client_id=${encodeURIComponent(config.clientId)}&logout_uri=${encodeURIComponent(`${location.origin}/`)}`);
-    } else { setPreview(false); setMeals([]); setReadings([]); }
+    } else { setPreview(false); setMeals([]); setReadings([]); setActivity([]); setAccountOpen(false); }
   };
   const saveMeal = async (saved: Meal) => { setMeals(previous => [saved, ...previous.filter(x => x.id !== saved.id)]); setView('history'); setNotice(preview ? 'Preview meal added for this session only.' : 'Your meal is saved.'); };
 
@@ -98,8 +100,8 @@ export function App() {
 
   return <div className="app-shell">
     <aside className="sidebar"><Brand /><div className="workspace-label">YOUR WORKSPACE</div><nav aria-label="Main navigation">{([
-      ['overview', LayoutDashboard, 'Overview'], ['meal', Utensils, 'Log a meal'], ['history', Clock3, 'Meal history'], ['data', Activity, 'Your CGM data'],
-    ] as const).map(([key, Icon, label]) => <button key={key} className={view === key ? 'nav-item active' : 'nav-item'} onClick={() => { setView(key); setNotice(''); }}><Icon size={19} /><span>{label}</span>{view === key && <span className="nav-dot" />}</button>)}</nav><div className="sidebar-bottom"><div className="privacy-note"><ShieldCheck size={20} /><strong>Personal by design</strong><p>Your meals and readings stay connected to your account.</p></div><button className="account-button" onClick={signOut}><span className="avatar">{preview ? 'P' : (user?.profile.email?.[0] ?? 'Y').toUpperCase()}</span><span><strong>{preview ? 'Preview workspace' : 'Your account'}</strong><small>{preview ? 'Exit preview' : 'Sign out'}</small></span><LogOut size={17} /></button></div></aside>
+      ['overview', LayoutDashboard, 'Overview'], ['meal', Utensils, 'Log a meal'], ['history', Clock3, 'Meal history'], ['data', Activity, 'Your CGM data'], ['activity', Footprints, 'Activity data'],
+    ] as const).map(([key, Icon, label]) => <button key={key} className={view === key ? 'nav-item active' : 'nav-item'} onClick={() => { setView(key); setNotice(''); setAccountOpen(false); }}><Icon size={19} /><span>{label}</span>{view === key && <span className="nav-dot" />}</button>)}</nav><div className="sidebar-bottom"><div className="privacy-note"><ShieldCheck size={20} /><strong>Personal by design</strong><p>Your meals and readings stay connected to your account.</p></div><div className="account-area">{accountOpen && <div className="account-menu" role="menu"><div><strong>{preview ? 'Preview workspace' : 'Signed in'}</strong><small>{preview ? 'Local demonstration' : String(user?.profile.email ?? 'Your private account')}</small></div><button role="menuitem" onClick={() => void signOut()}><LogOut size={16} />{preview ? 'Exit preview' : 'Sign out'}</button></div>}<button className="account-button" aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen(open => !open)}><span className="avatar">{preview ? 'P' : (user?.profile.email?.[0] ?? 'Y').toUpperCase()}</span><span><strong>{preview ? 'Preview workspace' : 'Your account'}</strong><small>{preview ? 'Open options' : String(user?.profile.email ?? 'Open profile')}</small></span><ChevronDown className={accountOpen ? 'account-chevron open' : 'account-chevron'} size={17} /></button></div></div></aside>
     <div className="main-shell"><header className="topbar"><span>YOUR DAILY RHYTHM</span><div><span className="dot" /> {preview ? 'Local preview' : 'Personal journal'}<span className="topbar-divider" />{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div></header>
       <main className="content">{preview && <div className="preview-banner"><CircleHelp size={17} /><span>Preview workspace. Sign-in, uploads, and cloud saving will work after AWS deployment. Preview entries disappear when you leave.</span></div>}{notice && <div role="status" className="notice"><span>{notice}</span><button aria-label="Dismiss message" onClick={() => setNotice('')}><X size={16} /></button></div>}
       {view === 'overview' && <><div className="page-heading"><div><p className="eyebrow">ONE MEAL AT A TIME</p><h1>Your daily picture</h1><p>A little context for the way your body responds.</p></div><button className="primary" onClick={() => setView('meal')}><Plus size={18} /> Log a meal</button></div>
@@ -111,6 +113,7 @@ export function App() {
       {view === 'meal' && <MealForm api={api} preview={preview} onSaved={saveMeal} onError={setNotice} />}
       {view === 'history' && <><div className="page-heading"><div><p className="eyebrow">YOUR FOOD JOURNAL</p><h1>Meal history</h1><p>Confirmed portions and nutrition, all in one place.</p></div><button className="primary" onClick={() => setView('meal')}><Plus size={18} /> Log a meal</button></div><section className="panel">{meals.length ? meals.map(meal => <MealRow key={meal.id} meal={meal} action={async () => { if (!api) { setNotice('Predictions will be available when your team connects the model.'); return; } try { await api.predict(meal.id); setNotice('Prediction saved.'); } catch (error) { setNotice(errorMessage(error)); } }} />) : <Empty title="Your journal is ready" text="Your saved meals will appear here." icon={<Utensils size={28} />} />}{hasMoreMeals && <p className="panel-foot">Showing the latest 100 meals. Full-history export will be added in the next phase.</p>}</section></>}
       {view === 'data' && <DataUpload api={api} onError={setNotice} onReady={refresh} readings={readings} />}
+      {view === 'activity' && <ActivityUpload api={api} onError={setNotice} onReady={refresh} activity={activity} />}
       <footer className="app-footer"><span>Made for your everyday understanding.</span><span>Research prototype · No diagnosis or medication advice</span></footer></main>
     </div>
   </div>;
@@ -165,6 +168,9 @@ function MealForm({ api, preview, onSaved, onError }: { api: Api | null; preview
       const ready = await api.completeMealPhoto(started.photo.id);
       const analysis = await api.analyzeMealPhoto(ready.id);
       if (photoRequest.current !== requestId) return;
+      if (photoPreviewRef.current) URL.revokeObjectURL(photoPreviewRef.current);
+      photoPreviewRef.current = '';
+      setPhotoPreview(analysis.preview_url); setPhotoPreviewFailed(false);
       const suggestions = analysis.items.reduce<{ food: Food; grams: number }[]>((list, item) => {
         const food = item.matches[0];
         if (!food) return list;
@@ -259,6 +265,39 @@ function DataUpload({ api, onError, onReady, readings }: { api: Api | null; onEr
   };
   const checkStatus = async () => { if (!api || !status) return; try { const next = await api.importStatus(status.id); setStatus(next); if (next.status === 'ready') await onReady(); } catch (error) { onError(errorMessage(error)); } };
   return <><div className="page-heading"><div><p className="eyebrow">BRING YOUR HISTORY</p><h1>Your CGM data</h1><p>A personal starting point for understanding your response.</p></div></div><div className="upload-grid"><section className="panel upload-panel"><div className="panel-heading"><div><h2>Upload a CGM export</h2><p>Your original file is kept in private storage.</p></div><ShieldCheck size={21} /></div><label className="drop-zone"><span className="empty-icon"><Upload size={30} /></span><strong>{file ? file.name : 'Choose your CSV file'}</strong><span>{file ? `${(file.size / 1024).toFixed(1)} KB · Click to choose another` : 'Select an export from your computer or phone'}</span><small>CSV · Up to 10 MB · 20,000 readings</small><input aria-label="Select CGM CSV" type="file" accept=".csv,text/csv" onChange={e => { setFile(e.target.files?.[0] ?? null); setStatus(null); }} /></label><label htmlFor="glucose-unit">Glucose unit used in this file</label><select id="glucose-unit" value={unit} onChange={e => setUnit(e.target.value as typeof unit)}><option>mg/dL</option><option>mmol/L</option></select><button className="primary full-width" disabled={!file || busy} onClick={upload}><Upload size={17} />{busy ? 'Uploading and processing…' : 'Upload and process'}</button>{status && <div className={`import-status ${status.status}`}><strong>{status.status === 'ready' ? `${status.reading_count} readings ready` : status.status === 'failed' ? 'Import needs attention' : 'Your import is in progress'}</strong><p>{status.error ?? status.filename}</p>{!busy && status.status !== 'ready' && status.status !== 'failed' && <button className="text-button" onClick={checkStatus}>Check status <ArrowRight size={15} /></button>}</div>}</section><section className="format-card"><FileText size={28} strokeWidth={1.5} /><h2>A clear format,<br />a smoother import.</h2><p>This first version accepts a CSV with two columns:</p><code>timestamp,glucose</code><p>Include a timezone in every timestamp and select the glucose unit above. Device-specific export adapters will be added after we inspect your sample.</p><a className="secondary" href="/cgm-template.csv" download><ArrowDownToLine size={16} /> Download example CSV</a><small>The example contains synthetic readings for format illustration only.</small></section></div>{readings.length > 0 && <section className="panel"><div className="panel-heading"><h2>Your latest readings</h2><span className="chip">mg/dL</span></div><GlucoseChart readings={readings} /></section>}</>;
+}
+
+function ActivityUpload({ api, onError, onReady, activity }: { api: Api | null; onError: (s: string) => void; onReady: () => Promise<void>; activity: ActivityReading[] }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<ActivityImportStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const upload = async () => {
+    if (!api) { onError('Activity uploads require AWS sign-in.'); return; }
+    if (!file) return;
+    if (file.size > 50 * 1024 * 1024) { onError('Choose an activity file smaller than 50 MB.'); return; }
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension !== 'zip' && extension !== 'csv') { onError('Choose an Apple Health export ZIP or activity CSV.'); return; }
+    const contentType = extension === 'zip' ? 'application/zip' as const : 'text/csv' as const;
+    setBusy(true);
+    try {
+      const started = await api.startActivityImport(file.name, contentType); setStatus(started.import);
+      const body = new FormData(); Object.entries(started.upload.fields).forEach(([key, value]) => body.append(key, value)); body.append('file', file);
+      const response = await fetch(started.upload.url, { method: 'POST', body });
+      if (!response.ok) throw new Error('The activity file upload failed. Please try again.');
+      for (let i = 0; i < 60 && alive.current; i++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        if (!alive.current) break;
+        const next = await api.activityImportStatus(started.import.id); setStatus(next);
+        if (next.status === 'failed') throw new Error(next.error ?? 'The activity file could not be processed.');
+        if (next.status === 'ready') { await onReady(); break; }
+      }
+    } catch (error) { if (alive.current) onError(errorMessage(error)); }
+    finally { if (alive.current) setBusy(false); }
+  };
+  const latest = activity.at(-1);
+  return <><div className="page-heading"><div><p className="eyebrow">ADD YOUR MOVEMENT CONTEXT</p><h1>Your activity data</h1><p>Bring in Apple Watch movement and heart rate alongside meals and glucose.</p></div></div><div className="upload-grid"><section className="panel upload-panel"><div className="panel-heading"><div><h2>Upload activity history</h2><p>Your original file is kept in private storage.</p></div><ShieldCheck size={21} /></div><label className="drop-zone"><span className="empty-icon"><HeartPulse size={30} /></span><strong>{file ? file.name : 'Choose Apple Health ZIP or CSV'}</strong><span>{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB · Click to choose another` : 'Select the export from your iPhone, Mac, or computer'}</span><small>ZIP or CSV · Up to 50 MB</small><input aria-label="Select activity export" type="file" accept=".zip,.csv,application/zip,text/csv" onChange={event => { setFile(event.target.files?.[0] ?? null); setStatus(null); }} /></label><button className="primary full-width" disabled={!file || busy} onClick={upload}><Upload size={17} />{busy ? 'Uploading and processing…' : 'Upload and process'}</button>{status && <div className={`import-status ${status.status}`}><strong>{status.status === 'ready' ? `${status.reading_count} activity intervals ready` : status.status === 'failed' ? 'Import needs attention' : 'Your activity import is in progress'}</strong><p>{status.error ?? status.filename}</p></div>}</section><section className="format-card"><Footprints size={28} strokeWidth={1.5} /><h2>Export from<br />Apple Health.</h2><p>On your iPhone, open Health, tap your profile picture, choose <strong>Export All Health Data</strong>, then upload the resulting export.zip here.</p><p>You can also upload a CSV with this header:</p><code>timestamp,steps,active_energy_kcal,heart_rate_bpm</code><a className="secondary" href="/activity-template.csv" download><ArrowDownToLine size={16} /> Download example CSV</a><small>Steps and active energy are summed; heart rate is averaged into five minute intervals.</small></section></div>{activity.length > 0 && <section className="panel"><div className="panel-heading"><div><h2>Latest activity</h2><p>{activity.length} recent five minute intervals are available to the prediction pipeline.</p></div><span className="chip">{latest ? friendlyDate(latest.timestamp) : ''}</span></div><div className="activity-summary"><Summary icon={<Footprints size={19} />} label="Steps" value={String(latest?.steps ?? '—')} detail="Latest interval" /><Summary icon={<Activity size={19} />} label="Active energy" value={latest?.active_energy_kcal == null ? '—' : String(latest.active_energy_kcal)} unit={latest?.active_energy_kcal == null ? '' : 'kcal'} detail="Latest interval" /><Summary icon={<HeartPulse size={19} />} label="Heart rate" value={latest?.heart_rate_bpm == null ? '—' : String(latest.heart_rate_bpm)} unit={latest?.heart_rate_bpm == null ? '' : 'bpm'} detail="Latest interval average" /></div></section>}</>;
 }
 
 function GlucoseChart({ readings }: { readings: Reading[] }) {

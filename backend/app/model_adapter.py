@@ -11,7 +11,8 @@ from . import guardrails, storage
 from .schemas import ModelOutput, timestamp
 
 
-def _payload(meal: dict, readings: list[dict]) -> dict:
+def _payload(meal: dict, readings: list[dict], activity: list[dict] | None = None) -> dict:
+    activity = activity or []
     return {
         "schema_version": "1.0",
         "meal": {
@@ -25,8 +26,14 @@ def _payload(meal: dict, readings: list[dict]) -> dict:
             {"timestamp": item["timestamp"], "glucose_mg_dl": item["glucose_mg_dl"]}
             for item in reversed(readings)
         ],
-        # These stable keys let later versions add modalities without breaking the model contract.
-        "heart_rate": [],
+        "activity_history": [
+            {key: item[key] for key in ("timestamp", "steps", "active_energy_kcal", "heart_rate_bpm") if key in item}
+            for item in reversed(activity)
+        ],
+        "heart_rate": [
+            {"timestamp": item["timestamp"], "heart_rate_bpm": item["heart_rate_bpm"]}
+            for item in reversed(activity) if "heart_rate_bpm" in item
+        ],
         "medications": [],
     }
 
@@ -36,6 +43,7 @@ def predict_and_store(owner: str, meal: dict):
     if not endpoint:
         raise HTTPException(503, {"code": "model_not_connected", "message": "Your meal is saved. The prediction model has not been connected yet."})
     readings = storage.readings_before(owner, meal["eaten_at"], 2016)
+    activity = storage.activity_before(owner, meal["eaten_at"], 2016)
     if not readings:
         raise HTTPException(422, {"code": "cgm_history_required", "message": "Upload CGM history before requesting a prediction."})
     try:
@@ -46,7 +54,7 @@ def predict_and_store(owner: str, meal: dict):
             EndpointName=endpoint,
             ContentType="application/json",
             Accept="application/json",
-            Body=json.dumps(_payload(meal, readings)).encode(),
+            Body=json.dumps(_payload(meal, readings, activity)).encode(),
         )
         result = ModelOutput.model_validate_json(response["Body"].read())
     except (ValidationError, ValueError, KeyError, json.JSONDecodeError):

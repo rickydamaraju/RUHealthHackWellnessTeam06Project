@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from mangum import Mangum
 from . import catalog, meal_photo, meal_text, model_adapter, storage
-from .schemas import ImportInput, MealInput, PhotoUploadInput, PredictionInput, TextInput, timestamp
+from .schemas import ActivityImportInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, TextInput, timestamp
 
 app = FastAPI(title="Glucose Compass API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -138,7 +138,25 @@ def analyze_meal_photo(photo_id: UUID, owner: str = Depends(identity)):
         image = storage.s3().get_object(Bucket=os.environ["DATA_BUCKET"], Key=record["object_key"])["Body"].read()
     except Exception:
         raise HTTPException(503, "The meal photo could not be opened. Please upload it again.") from None
-    return meal_photo.analyze(image, record["content_type"])
+    normalized, _ = meal_photo._normalize_image(image, record["content_type"])
+    preview_key = f"users/{owner}/meal-photos/previews/{photo_id}.jpg"
+    storage.s3().put_object(Bucket=os.environ["DATA_BUCKET"], Key=preview_key, Body=normalized, ContentType="image/jpeg")
+    storage.save_record(owner, f"PHOTO#{photo_id}", {**record, "preview_key": preview_key})
+    result = meal_photo.analyze_jpeg(normalized)
+    result["preview_url"] = storage.s3().generate_presigned_url(
+        "get_object", Params={"Bucket": os.environ["DATA_BUCKET"], "Key": preview_key}, ExpiresIn=3600,
+    )
+    return result
+
+
+@app.get("/meal-photos/{photo_id}/preview")
+def meal_photo_preview(photo_id: UUID, owner: str = Depends(identity)):
+    record = storage.get_record(owner, f"PHOTO#{photo_id}")
+    if not record or not record.get("preview_key"):
+        raise HTTPException(404, "Meal photo preview is not ready.")
+    return {"preview_url": storage.s3().generate_presigned_url(
+        "get_object", Params={"Bucket": os.environ["DATA_BUCKET"], "Key": record["preview_key"]}, ExpiresIn=3600,
+    )}
 
 
 @app.post("/imports")
@@ -167,6 +185,35 @@ def get_import(import_id: UUID, owner: str = Depends(identity)):
 @app.get("/cgm")
 def cgm(owner: str = Depends(identity)):
     result = storage.list_records(owner, "CGM#", 288)
+    return {**result, "items": [storage.public_record(x) for x in reversed(result["items"])]}
+
+
+@app.post("/activity-imports")
+def start_activity_import(body: ActivityImportInput, owner: str = Depends(identity)):
+    import_id = str(uuid4())
+    extension = "zip" if body.content_type == "application/zip" else "csv"
+    key = f"users/{owner}/activity-imports/{import_id}.{extension}"
+    data = {"id": import_id, "filename": body.filename, "content_type": body.content_type,
+            "status": "awaiting_upload", "created_at": timestamp(datetime.now(timezone.utc)), "object_key": key}
+    storage.save_record(owner, f"ACTIVITY_IMPORT#{import_id}", data)
+    upload = storage.s3().generate_presigned_post(
+        Bucket=os.environ["DATA_BUCKET"], Key=key, Fields={"Content-Type": body.content_type},
+        Conditions=[{"Content-Type": body.content_type}, ["content-length-range", 1, 50 * 1024 * 1024]], ExpiresIn=300,
+    )
+    return {"import": storage.public_record(data), "upload": upload}
+
+
+@app.get("/activity-imports/{import_id}")
+def get_activity_import(import_id: UUID, owner: str = Depends(identity)):
+    found = storage.get_record(owner, f"ACTIVITY_IMPORT#{import_id}")
+    if not found:
+        raise HTTPException(404, "Activity upload not found.")
+    return storage.public_record(found)
+
+
+@app.get("/activity")
+def activity(owner: str = Depends(identity)):
+    result = storage.list_records(owner, "ACTIVITY#", 288)
     return {**result, "items": [storage.public_record(x) for x in reversed(result["items"])]}
 
 
