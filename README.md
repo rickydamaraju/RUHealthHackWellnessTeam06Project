@@ -1,4 +1,4 @@
-# Mini Sathi — Predict My Glucose Response
+# Predict My Glucose Response
 
 Mini Sathi is an AWS-hosted wellness research prototype for participant sign-in, searchable meal logging, CGM CSV uploads, and future person-specific glucose prediction. It deliberately avoids diagnostic or medication claims.
 
