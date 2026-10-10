@@ -88,7 +88,7 @@ The pipeline watches `rickydamaraju/RUHealthHackWellnessTeam06Project` on `main`
 ## V1 data and safety boundaries
 
 - Accepted CGM file: UTF-8 CSV with `timestamp,glucose`, timezone-aware ISO 8601 timestamps, one selected unit, at most 10 MB and 20,000 readings
-- Accepted activity files: Apple Health `export.zip`, or UTF-8 CSV with `timestamp` and at least one of `steps`, `active_energy_kcal`, or `heart_rate_bpm`; at most 50 MB
+- Accepted activity files: Apple Health `export.zip` up to 250 MB, or a UTF-8 CSV up to 50 MB with `timestamp` and at least one of `steps`, `active_energy_kcal`, or `heart_rate_bpm`
 - Meal nutrition is an estimate derived from the participant-confirmed USDA item and gram amount
 - Prediction is unavailable until a real model endpoint is configured; no synthetic prediction is shown as participant data
 - Bedrock Guardrails screen explanatory wording. Numeric model outputs are preserved and model/schema failures return a clear unavailable response

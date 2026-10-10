@@ -46,9 +46,9 @@ def process(record):
         kwargs["VersionId"] = record["s3"]["object"]["versionId"]
     response = storage.s3().get_object(**kwargs)
     try:
-        limit = 50 * 1024 * 1024 if activity else 10 * 1024 * 1024
+        limit = (250 if filename.lower().endswith(".zip") else 50) * 1024 * 1024 if activity else 10 * 1024 * 1024
         if response["ContentLength"] > limit:
-            raise (InvalidActivity("The activity file exceeds the 50 MB limit.") if activity else InvalidCGM("The CSV exceeds the 10 MB limit."))
+            raise (InvalidActivity("The activity file exceeds its upload limit.") if activity else InvalidCGM("The CSV exceeds the 10 MB limit."))
         data = response["Body"].read(limit + 1)
         if activity:
             readings = parse_apple_health_zip(data) if filename.lower().endswith(".zip") else parse_activity_csv(data)

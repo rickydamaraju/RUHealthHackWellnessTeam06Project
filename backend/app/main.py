@@ -198,7 +198,7 @@ def start_activity_import(body: ActivityImportInput, owner: str = Depends(identi
     storage.save_record(owner, f"ACTIVITY_IMPORT#{import_id}", data)
     upload = storage.s3().generate_presigned_post(
         Bucket=os.environ["DATA_BUCKET"], Key=key, Fields={"Content-Type": body.content_type},
-        Conditions=[{"Content-Type": body.content_type}, ["content-length-range", 1, 50 * 1024 * 1024]], ExpiresIn=300,
+        Conditions=[{"Content-Type": body.content_type}, ["content-length-range", 1, (250 if extension == "zip" else 50) * 1024 * 1024]], ExpiresIn=300,
     )
     return {"import": storage.public_record(data), "upload": upload}
 
