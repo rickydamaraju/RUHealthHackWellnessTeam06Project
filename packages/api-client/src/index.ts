@@ -1,4 +1,4 @@
-import type { ActivityImportStatus, ActivityReading, Food, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, PhotoAnalysis, Page, Prediction, Profile, ProfileInput } from '@glucose-compass/contracts';
+import type { ActivityImportStatus, ActivityReading, Food, HealthRecord, HealthSyncInput, Meal, MealInput, MealPhoto, Reading, ImportStatus, Interpretation, PhotoAnalysis, Page, Prediction, Profile, ProfileInput } from '@glucose-compass/contracts';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -39,6 +39,8 @@ export function createApi(baseUrl: string, accessToken: () => Promise<string>) {
     activity: () => request<Page<ActivityReading>>('/activity'),
     startActivityImport: (filename: string, contentType: 'text/csv' | 'application/zip') => request<{ import: ActivityImportStatus; upload: { url: string; fields: Record<string, string> } }>('/activity-imports', { filename, content_type: contentType }),
     activityImportStatus: (id: string) => request<ActivityImportStatus>(`/activity-imports/${encodeURIComponent(id)}`),
+    syncHealthData: (data: HealthSyncInput) => request<{ accepted: number; synced_at: string }>('/health-data/sync', data),
+    healthData: () => request<Page<HealthRecord>>('/health-data'),
     predict: (mealId: string) => request<Prediction>('/predictions', { meal_id: mealId }),
   };
 }

@@ -2,7 +2,7 @@
   "name": "glucose-compass",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["frontend", "infrastructure", "packages/contracts", "packages/api-client"],
+  "workspaces": ["frontend", "mobile", "infrastructure", "packages/contracts", "packages/api-client"],
   "scripts": {
     "dev": "npm run dev --workspace frontend",
     "build": "npm run build --workspace frontend",

@@ -90,5 +90,22 @@ def activity_before(owner: str, cutoff: str, limit=2016):
     return unpack(response.get("Items", []))
 
 
+def health_before(owner: str, start: str, cutoff: str, limit=10000):
+    items, cursor = [], None
+    while len(items) < limit:
+        args = {
+            "KeyConditionExpression": Key("pk").eq(f"USER#{owner}") & Key("sk").between(f"HEALTH#{start}", f"HEALTH#{cutoff}\uffff"),
+            "Limit": min(1000, limit - len(items)), "ScanIndexForward": False, "ConsistentRead": True,
+        }
+        if cursor:
+            args["ExclusiveStartKey"] = cursor
+        response = table().query(**args)
+        items.extend(response.get("Items", []))
+        cursor = response.get("LastEvaluatedKey")
+        if not cursor:
+            break
+    return unpack(items)
+
+
 def public_record(item: dict):
     return {key: value for key, value in item.items() if key not in {"pk", "sk", "object_key", "preview_key", "request_hash"}}

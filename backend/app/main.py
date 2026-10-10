@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from mangum import Mangum
 from . import catalog, meal_photo, meal_text, model_adapter, storage
-from .schemas import ActivityImportInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, ProfileInput, TextInput, timestamp
+from .schemas import ActivityImportInput, HealthSyncInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, ProfileInput, TextInput, timestamp
 
 app = FastAPI(title="Glucose Compass API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -234,6 +234,40 @@ def get_activity_import(import_id: UUID, owner: str = Depends(identity)):
 @app.get("/activity")
 def activity(owner: str = Depends(identity)):
     result = storage.list_records(owner, "ACTIVITY#", 288)
+    return {**result, "items": [storage.public_record(x) for x in reversed(result["items"])]}
+
+
+@app.post("/health-data/sync")
+def sync_health_data(body: HealthSyncInput, owner: str = Depends(identity)):
+    records = []
+    for sample in body.samples:
+        value = sample.model_dump()
+        value.pop("start_at"); value.pop("end_at")
+        value["timestamp"] = timestamp(sample.start_at)
+        value["end_timestamp"] = timestamp(sample.end_at)
+        value["source"] = "apple_health"
+        digest = hashlib.sha256(sample.source_id.encode()).hexdigest()[:24]
+        records.append((f"HEALTH#{value['timestamp']}#{sample.metric}#{digest}", value))
+    for workout in body.workouts:
+        value = workout.model_dump()
+        value.pop("start_at"); value.pop("end_at")
+        value["metric"] = "workout"
+        value["timestamp"] = timestamp(workout.start_at)
+        value["end_timestamp"] = timestamp(workout.end_at)
+        value["source"] = "apple_health"
+        digest = hashlib.sha256(workout.source_id.encode()).hexdigest()[:24]
+        records.append((f"HEALTH#{value['timestamp']}#workout#{digest}", value))
+    with storage.table().batch_writer(overwrite_by_pkeys=["pk", "sk"]) as batch:
+        for key, value in records:
+            batch.put_item(Item=storage.pack({"pk": f"USER#{owner}", "sk": key, **value}))
+    synced_at = timestamp(datetime.now(timezone.utc))
+    storage.save_record(owner, "HEALTH_SYNC", {"anchor": body.anchor, "synced_at": synced_at, "record_count": len(records)})
+    return {"accepted": len(records), "synced_at": synced_at}
+
+
+@app.get("/health-data")
+def health_data(owner: str = Depends(identity)):
+    result = storage.list_records(owner, "HEALTH#", 500)
     return {**result, "items": [storage.public_record(x) for x in reversed(result["items"])]}
 
 

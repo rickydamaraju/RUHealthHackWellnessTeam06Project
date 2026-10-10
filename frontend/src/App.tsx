@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import type { User, UserManager } from 'oidc-client-ts';
 import { Activity, ArrowDownToLine, ArrowRight, Camera, Check, ChevronDown, ChevronRight, CircleHelp, Clock3, FileText, Footprints, HeartPulse, Image as ImageIcon, ImagePlus, LayoutDashboard, Leaf, LogOut, Plus, Search, ShieldCheck, Sparkles, Trash2, Upload, Utensils, X } from 'lucide-react';
 import { createApi, type Api } from '@glucose-compass/api-client';
-import type { ActivityImportStatus, ActivityReading, DiabetesStatus, Food, ImportStatus, Interpretation, Meal, MealPhoto, MealPhotoContentType, Nutrition, PhotoAnalysis, Profile, ProfileInput, Reading, RuntimeConfig } from '@glucose-compass/contracts';
+import type { ActivityImportStatus, ActivityReading, DiabetesStatus, Food, HealthRecord, ImportStatus, Interpretation, Meal, MealPhoto, MealPhotoContentType, Nutrition, PhotoAnalysis, Profile, ProfileInput, Reading, RuntimeConfig } from '@glucose-compass/contracts';
 import { createAuth } from './auth';
 
 type View = 'overview' | 'meal' | 'history' | 'data' | 'activity';
@@ -32,6 +32,7 @@ export function App() {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [readings, setReadings] = useState<Reading[]>([]);
   const [activity, setActivity] = useState<ActivityReading[]>([]);
+  const [healthRecords, setHealthRecords] = useState<HealthRecord[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -74,9 +75,9 @@ export function App() {
   const refresh = async () => {
     if (!api) return;
     try {
-      const [historyPage, cgm, movement, participant] = await Promise.all([api.meals(), api.readings(), api.activity(), api.profile()]);
+      const [historyPage, cgm, movement, participant, health] = await Promise.all([api.meals(), api.readings(), api.activity(), api.profile(), api.healthData()]);
       setMeals(historyPage.items); setHasMoreMeals(historyPage.has_more); setReadings(cgm.items); setActivity(movement.items);
-      setProfile(participant.profile);
+      setProfile(participant.profile); setHealthRecords(health.items);
     } catch (error) { setNotice(errorMessage(error)); }
     finally { setProfileLoaded(true); }
   };
@@ -90,9 +91,9 @@ export function App() {
     if (auth.current && config) {
       try { await auth.current.revokeTokens(['refresh_token']); } catch { /* Local session is always cleared. */ }
       await auth.current.removeUser();
-      setUser(null); setMeals([]); setReadings([]); setActivity([]); setProfile(null); setProfileLoaded(false); setAccountOpen(false);
+      setUser(null); setMeals([]); setReadings([]); setActivity([]); setHealthRecords([]); setProfile(null); setProfileLoaded(false); setAccountOpen(false);
       location.assign(`${config.cognitoDomain}/logout?client_id=${encodeURIComponent(config.clientId)}&logout_uri=${encodeURIComponent(`${location.origin}/`)}`);
-    } else { setPreview(false); setMeals([]); setReadings([]); setActivity([]); setProfile(null); setProfileLoaded(false); setAccountOpen(false); }
+    } else { setPreview(false); setMeals([]); setReadings([]); setActivity([]); setHealthRecords([]); setProfile(null); setProfileLoaded(false); setAccountOpen(false); }
   };
   const saveMeal = async (saved: Meal) => { setMeals(previous => [saved, ...previous.filter(x => x.id !== saved.id)]); setView('history'); setNotice(preview ? 'Preview meal added for this session only.' : 'Your meal is saved.'); };
 
@@ -120,7 +121,7 @@ export function App() {
       {view === 'meal' && <MealForm api={api} preview={preview} onSaved={saveMeal} onError={setNotice} />}
       {view === 'history' && <><div className="page-heading"><div><p className="eyebrow">YOUR FOOD JOURNAL</p><h1>Meal history</h1><p>Confirmed portions and nutrition, all in one place.</p></div><button className="primary" onClick={() => setView('meal')}><Plus size={18} /> Log a meal</button></div><section className="panel">{meals.length ? meals.map(meal => <MealRow key={meal.id} meal={meal} action={async () => { if (!api) { setNotice('Predictions will be available when your team connects the model.'); return; } try { await api.predict(meal.id); setNotice('Prediction saved.'); } catch (error) { setNotice(errorMessage(error)); } }} />) : <Empty title="Your journal is ready" text="Your saved meals will appear here." icon={<Utensils size={28} />} />}{hasMoreMeals && <p className="panel-foot">Showing the latest 100 meals. Full-history export will be added in the next phase.</p>}</section></>}
       {view === 'data' && <DataUpload api={api} onError={setNotice} onReady={refresh} readings={readings} />}
-      {view === 'activity' && <ActivityUpload api={api} onError={setNotice} onReady={refresh} activity={activity} />}
+      {view === 'activity' && <ActivityUpload api={api} onError={setNotice} onReady={refresh} activity={activity} healthRecords={healthRecords} />}
       <footer className="app-footer"><span>Made for your everyday understanding.</span><span>Research prototype · No diagnosis or medication advice</span></footer></main>
     </div>
   </div>;
@@ -292,7 +293,7 @@ function DataUpload({ api, onError, onReady, readings }: { api: Api | null; onEr
   return <><div className="page-heading"><div><p className="eyebrow">BRING YOUR HISTORY</p><h1>Your CGM data</h1><p>A personal starting point for understanding your response.</p></div></div><div className="upload-grid"><section className="panel upload-panel"><div className="panel-heading"><div><h2>Upload a CGM export</h2><p>Your original file is kept in private storage.</p></div><ShieldCheck size={21} /></div><label className="drop-zone"><span className="empty-icon"><Upload size={30} /></span><strong>{file ? file.name : 'Choose your CSV file'}</strong><span>{file ? `${(file.size / 1024).toFixed(1)} KB · Click to choose another` : 'Select an export from your computer or phone'}</span><small>CSV · Up to 10 MB · 20,000 readings</small><input aria-label="Select CGM CSV" type="file" accept=".csv,text/csv" onChange={e => { setFile(e.target.files?.[0] ?? null); setStatus(null); }} /></label><label htmlFor="glucose-unit">Glucose unit used in this file</label><select id="glucose-unit" value={unit} onChange={e => setUnit(e.target.value as typeof unit)}><option>mg/dL</option><option>mmol/L</option></select><button className="primary full-width" disabled={!file || busy} onClick={upload}><Upload size={17} />{busy ? 'Uploading and processing…' : 'Upload and process'}</button>{status && <div className={`import-status ${status.status}`}><strong>{status.status === 'ready' ? `${status.reading_count} readings ready` : status.status === 'failed' ? 'Import needs attention' : 'Your import is in progress'}</strong><p>{status.error ?? status.filename}</p>{!busy && status.status !== 'ready' && status.status !== 'failed' && <button className="text-button" onClick={checkStatus}>Check status <ArrowRight size={15} /></button>}</div>}</section><section className="format-card"><FileText size={28} strokeWidth={1.5} /><h2>A clear format,<br />a smoother import.</h2><p>This first version accepts a CSV with two columns:</p><code>timestamp,glucose</code><p>Include a timezone in every timestamp and select the glucose unit above. Device-specific export adapters will be added after we inspect your sample.</p><a className="secondary" href="/cgm-template.csv" download><ArrowDownToLine size={16} /> Download example CSV</a><small>The example contains synthetic readings for format illustration only.</small></section></div>{readings.length > 0 && <section className="panel"><div className="panel-heading"><h2>Your latest readings</h2><span className="chip">mg/dL</span></div><GlucoseChart readings={readings} /></section>}</>;
 }
 
-function ActivityUpload({ api, onError, onReady, activity }: { api: Api | null; onError: (s: string) => void; onReady: () => Promise<void>; activity: ActivityReading[] }) {
+function ActivityUpload({ api, onError, onReady, activity, healthRecords }: { api: Api | null; onError: (s: string) => void; onReady: () => Promise<void>; activity: ActivityReading[]; healthRecords: HealthRecord[] }) {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<ActivityImportStatus | null>(null);
   const [busy, setBusy] = useState(false);

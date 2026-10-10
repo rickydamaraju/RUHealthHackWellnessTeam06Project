@@ -1,7 +1,7 @@
 """Stable boundary between the product API and the team's person-specific model."""
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 import boto3
 from botocore.config import Config
@@ -11,8 +11,9 @@ from . import guardrails, storage
 from .schemas import ModelOutput, timestamp
 
 
-def _payload(meal: dict, readings: list[dict], activity: list[dict] | None = None, profile: dict | None = None) -> dict:
+def _payload(meal: dict, readings: list[dict], activity: list[dict] | None = None, profile: dict | None = None, health: list[dict] | None = None) -> dict:
     activity = activity or []
+    health = health or []
     return {
         "schema_version": "1.0",
         "participant": {key: profile[key] for key in ("age", "height_cm", "weight_kg", "diabetes_status") if profile and key in profile},
@@ -34,6 +35,13 @@ def _payload(meal: dict, readings: list[dict], activity: list[dict] | None = Non
         "heart_rate": [
             {"timestamp": item["timestamp"], "heart_rate_bpm": item["heart_rate_bpm"]}
             for item in reversed(activity) if "heart_rate_bpm" in item
+        ] + [
+            {"timestamp": item["timestamp"], "heart_rate_bpm": item["value"]}
+            for item in reversed(health) if item.get("metric") == "heart_rate_bpm"
+        ],
+        "apple_health_history": [
+            {key: item[key] for key in ("metric", "timestamp", "end_timestamp", "value", "duration_seconds", "energy_kcal", "activity_type") if key in item}
+            for item in reversed(health)
         ],
         "medications": [],
     }
@@ -45,6 +53,9 @@ def predict_and_store(owner: str, meal: dict):
         raise HTTPException(503, {"code": "model_not_connected", "message": "Your meal is saved. The prediction model has not been connected yet."})
     readings = storage.readings_before(owner, meal["eaten_at"], 2016)
     activity = storage.activity_before(owner, meal["eaten_at"], 2016)
+    cutoff = datetime.fromisoformat(meal["eaten_at"].replace("Z", "+00:00"))
+    health_start = timestamp(cutoff - timedelta(days=7))
+    health = storage.health_before(owner, health_start, meal["eaten_at"], 10000)
     profile = storage.get_record(owner, "PROFILE")
     if not readings:
         raise HTTPException(422, {"code": "cgm_history_required", "message": "Upload CGM history before requesting a prediction."})
@@ -56,7 +67,7 @@ def predict_and_store(owner: str, meal: dict):
             EndpointName=endpoint,
             ContentType="application/json",
             Accept="application/json",
-            Body=json.dumps(_payload(meal, readings, activity, profile)).encode(),
+            Body=json.dumps(_payload(meal, readings, activity, profile, health)).encode(),
         )
         result = ModelOutput.model_validate_json(response["Body"].read())
     except (ValidationError, ValueError, KeyError, json.JSONDecodeError):

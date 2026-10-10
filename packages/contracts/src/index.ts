@@ -12,6 +12,11 @@ export interface Reading { timestamp: string; glucose_mg_dl: number }
 export interface ImportStatus { id: string; filename: string; status: 'awaiting_upload' | 'processing' | 'ready' | 'failed'; error?: string; reading_count?: number }
 export interface ActivityReading { timestamp: string; steps?: number; active_energy_kcal?: number; heart_rate_bpm?: number }
 export interface ActivityImportStatus extends ImportStatus { content_type: 'text/csv' | 'application/zip' }
+export type HealthMetric = 'heart_rate_bpm' | 'steps' | 'basal_energy_kcal' | 'active_energy_kcal';
+export interface HealthSampleInput { source_id: string; metric: HealthMetric; start_at: string; end_at: string; value: number }
+export interface WorkoutInput { source_id: string; activity_type: string; start_at: string; end_at: string; duration_seconds: number; energy_kcal?: number }
+export interface HealthSyncInput { samples: HealthSampleInput[]; workouts: WorkoutInput[]; anchor?: string }
+export interface HealthRecord { source_id: string; source: 'apple_health'; metric: HealthMetric | 'workout'; timestamp: string; end_timestamp: string; value?: number; duration_seconds?: number; energy_kcal?: number; activity_type?: string }
 export type DiabetesStatus = 'type_1' | 'type_2' | 'unknown' | 'no_diabetes';
 export interface ProfileInput { first_name: string; last_name: string; age: number; height: number; height_unit: 'cm' | 'in'; weight: number; weight_unit: 'kg' | 'lb'; diabetes_status: DiabetesStatus }
 export interface Profile extends ProfileInput { height_cm: number; weight_kg: number; created_at: string; updated_at: string }

@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from app.schemas import ModelOutput, PhotoUploadInput, ProfileInput
+from app.schemas import HealthSyncInput, ModelOutput, PhotoUploadInput, ProfileInput
 
 
 def model_result(minutes=(30, 60, 90, 120)):
@@ -39,3 +39,16 @@ def test_profile_accepts_supported_units_and_statuses():
     assert profile.first_name == "Ada"
     with pytest.raises(ValidationError):
         ProfileInput(first_name="Ada", last_name="Lovelace", age=30, height=10, height_unit="cm", weight=140, weight_unit="lb", diabetes_status="unknown")
+
+
+def test_health_sync_requires_timezone_and_supported_metrics():
+    sync = HealthSyncInput(samples=[{
+        "source_id": "apple-sample-1", "metric": "heart_rate_bpm", "value": 72,
+        "start_at": "2026-10-10T08:00:00-04:00", "end_at": "2026-10-10T08:00:10-04:00",
+    }])
+    assert sync.samples[0].metric == "heart_rate_bpm"
+    with pytest.raises(ValidationError):
+        HealthSyncInput(samples=[{
+            "source_id": "sample", "metric": "blood_pressure", "value": 120,
+            "start_at": "2026-10-10T08:00:00", "end_at": "2026-10-10T08:00:10",
+        }])

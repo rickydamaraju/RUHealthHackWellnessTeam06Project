@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Glucose Compass",
+    "slug": "glucose-compass",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "glucosecompass",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.ruhealthhack.glucosecompass"
+    },
+    "android": {
+      "package": "com.ruhealthhack.glucosecompass"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Glucose Compass reads heart rate, steps, energy, and workouts to personalize glucose-response estimates.",
+          "background": true
+        }
+      ]
+    ]
+  }
+}

@@ -39,6 +39,7 @@ export class WellnessStack extends Stack {
     });
     const websiteUrl = `https://${distribution.distributionDomainName}`;
     const allowedOrigins = [websiteUrl, ...(props.stage === 'dev' ? ['http://localhost:5173', 'http://127.0.0.1:5173'] : [])];
+    const mobileCallbackUrl = 'glucosecompass://auth/callback';
     const files = new s3.Bucket(this, 'UserFiles', {
       ...commonBucket, versioned: true,
       cors: [{ allowedOrigins, allowedMethods: [s3.HttpMethods.POST], allowedHeaders: ['*'], maxAge: 300 }],
@@ -62,7 +63,7 @@ export class WellnessStack extends Stack {
       generateSecret: false, preventUserExistenceErrors: true, enableTokenRevocation: true,
       accessTokenValidity: Duration.minutes(30), idTokenValidity: Duration.minutes(30), refreshTokenValidity: Duration.days(7),
       oAuth: { flows: { authorizationCodeGrant: true }, scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE, cognito.OAuthScope.resourceServer(resourceServer, accessScope)],
-        callbackUrls: allowedOrigins.map(url => `${url}/auth/callback`), logoutUrls: allowedOrigins.map(url => `${url}/`) },
+        callbackUrls: [...allowedOrigins.map(url => `${url}/auth/callback`), mobileCallbackUrl], logoutUrls: [...allowedOrigins.map(url => `${url}/`), 'glucosecompass://'] },
     });
     const domain = props.createCognitoDomain === false ? undefined : users.addDomain('Domain', { cognitoDomain: { domainPrefix: `glucose-compass-${this.account}-${this.region}-${props.stage}` } });
     const guardrail = new bedrock.CfnGuardrail(this, 'WellnessGuardrail', {

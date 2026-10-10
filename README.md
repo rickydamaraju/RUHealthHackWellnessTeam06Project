@@ -5,6 +5,7 @@ Glucose Compass is an AWS-hosted wellness research prototype for participant sig
 ## What is implemented
 
 - Responsive React + TypeScript website, ready to share its typed API client with a later React Native app
+- Expo React Native mobile client with Cognito sign-in and native Apple Health permissions
 - Amazon Cognito hosted sign-in and registration; passwords are handled by Cognito and are never stored by this application
 - First-sign-in onboarding for name, age, height, weight, and diabetes-status context, stored privately in the participant's DynamoDB partition
 - Amazon API Gateway HTTP API with Cognito JWT authorization on participant routes
@@ -15,6 +16,7 @@ Glucose Compass is an AWS-hosted wellness research prototype for participant sig
 - USDA FNDDS 2021–2023 catalog with 5,431 foods and confirmed portion-based nutrition
 - Mobile camera and image upload for JPEG, PNG, HEIC/HEIF, AVIF, WebP, GIF, BMP, and TIFF meal photos; originals stay private in S3, supported files are normalized for Amazon Nova Lite, and editable nutrition estimates come from USDA data
 - Apple Health `export.zip` and activity CSV import for steps, active energy, and heart rate, aggregated into five minute model-ready intervals
+- Direct iPhone synchronization for original-timestamp heart rate, steps, basal energy, active calories, workout duration, and workout energy records
 - Amazon Bedrock for optional meal-text extraction and a Guardrail that blocks diagnosis and medication-dosing language
 - A SageMaker model endpoint adapter with validated prediction and uncertainty contracts
 - AWS CDK infrastructure and an optional GitHub-to-CodePipeline deployment stack
@@ -47,6 +49,19 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. Before AWS deployment, choose **Explore the workspace**. Preview entries remain only in the browser session; sign-in and cloud uploads require the deployed stack.
+
+## Native phone app
+
+The `mobile/` Expo application uses the same Cognito account and AWS API as the website. Apple Health requires a native development build on an iPhone; it does not work in Expo Go.
+
+1. Join the Apple Developer Program and enable HealthKit for bundle ID `com.ruhealthhack.glucosecompass` (or replace it with your team's bundle ID).
+2. Install Xcode, connect an iPhone, and run `npm run ios --workspace mobile`.
+3. Sign in with the same account used on the website.
+4. Tap **Allow access and sync 7 days**, approve the six requested data categories, and keep the app installed for later incremental synchronization.
+
+The app sends batches of at most 1,000 HealthKit samples to `POST /health-data/sync`. API Gateway derives the owner from the validated Cognito token; the client cannot submit a different participant ID. DynamoDB keys combine the original timestamp, metric, and a hash of the HealthKit sample UUID, making repeat synchronizations idempotent. Prediction requests read the prior seven-day window and include it as `apple_health_history` in the SageMaker request.
+
+Dexcom connection is represented in the mobile interface but remains disabled until a Dexcom Developer application supplies a client ID, client secret, approved callback URL, and sandbox or Limited Access approval. The secret must be stored in AWS rather than the mobile application.
 
 Validate before a merge:
 
