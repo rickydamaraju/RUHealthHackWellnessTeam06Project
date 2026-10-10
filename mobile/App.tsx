@@ -33,6 +33,8 @@ export default function App() {
       const connections = await api.connections();
       const permissionKey = `permissions-requested:${session.userId}`;
       const alreadyRequested = await SecureStore.getItemAsync(permissionKey);
+      const dexcomPermissionKey = `dexcom-requested:${session.userId}`;
+      const dexcomAlreadyRequested = await SecureStore.getItemAsync(dexcomPermissionKey);
 
       if (interactive || !alreadyRequested || connections.apple_health.status !== 'not_connected') {
         await syncAppleHealth(api);
@@ -42,9 +44,10 @@ export default function App() {
         const connected = connections.dexcom.status === 'connected' || connections.dexcom.status === 'connected_no_data';
         if (connected) {
           await api.syncDexcom();
-        } else if (interactive || !alreadyRequested) {
+        } else if (interactive || !dexcomAlreadyRequested) {
           const start = await api.startDexcomConnection();
           const result = await WebBrowser.openAuthSessionAsync(start.authorization_url, DEXCOM_RETURN_URL);
+          await SecureStore.setItemAsync(dexcomPermissionKey, new Date().toISOString());
           if (result.type === 'success') await api.syncDexcom();
         }
       }
