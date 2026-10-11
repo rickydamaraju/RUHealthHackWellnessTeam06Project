@@ -98,6 +98,20 @@ export function App() {
   }, [api]);
   useEffect(() => { void refresh(); }, [api]);
   useEffect(() => {
+    if (!api) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    const interval = window.setInterval(refreshWhenVisible, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
+    };
+  }, [api, refresh]);
+  useEffect(() => {
     if (!user || !config) { postToNative({ type: 'SIGNED_OUT' }); return; }
     void auth.current?.getUser().then(session => {
       if (session && !session.expired) postToNative({
@@ -160,13 +174,17 @@ export function App() {
 }
 
 function Onboarding({ api, onSaved, onSignOut }: { api: Api; onSaved: (profile: Profile) => void; onSignOut: () => Promise<void> }) {
-  const [form, setForm] = useState<ProfileInput>({ first_name: '', last_name: '', age: 18, height: 170, height_unit: 'cm', weight: 70, weight_unit: 'kg', diabetes_status: 'unknown' });
+  type ProfileForm = Omit<ProfileInput, 'age' | 'height' | 'weight'> & { age: string; height: string; weight: string };
+  const [form, setForm] = useState<ProfileForm>({ first_name: '', last_name: '', age: '', height: '', height_unit: 'cm', weight: '', weight_unit: 'kg', diabetes_status: 'unknown' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const update = <K extends keyof ProfileInput>(key: K, value: ProfileInput[K]) => setForm(current => ({ ...current, [key]: value }));
+  const update = <K extends keyof ProfileForm>(key: K, value: ProfileForm[K]) => setForm(current => ({ ...current, [key]: value }));
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError('');
-    try { onSaved(await api.saveProfile(form)); }
+    try {
+      if (!form.age || !form.height || !form.weight) throw new Error('Enter your age, height, and weight.');
+      onSaved(await api.saveProfile({ ...form, age: Number(form.age), height: Number(form.height), weight: Number(form.weight) }));
+    }
     catch (problem) { setError(errorMessage(problem)); }
     finally { setSaving(false); }
   };
@@ -174,7 +192,7 @@ function Onboarding({ api, onSaved, onSignOut }: { api: Api; onSaved: (profile: 
     { value: 'type_1', label: 'Type 1' }, { value: 'type_2', label: 'Type 2' },
     { value: 'no_diabetes', label: 'No diabetes' }, { value: 'unknown', label: 'Unknown' },
   ];
-  return <div className="onboarding"><header><Brand /><button className="text-button" onClick={() => void onSignOut()}><LogOut size={16} /> Sign out</button></header><main><section className="onboarding-copy"><span className="pill"><span className="dot" /> YOUR STARTING POINT</span><h1>Let’s personalize<br /><em>your experience.</em></h1><p>These details help your future model understand your individual context. You can still review every meal and prediction before using it.</p><div className="onboarding-private"><ShieldCheck size={21} /><span><strong>Private to your account</strong><small>Saved in your protected AWS data partition.</small></span></div></section><form className="onboarding-form" onSubmit={submit}><div><p className="eyebrow">A FEW DETAILS ABOUT YOU</p><h2>Complete your profile</h2><p>This takes about a minute.</p></div>{error && <div className="notice" role="alert">{error}</div>}<div className="form-two"><label>First name<input required autoComplete="given-name" maxLength={80} value={form.first_name} onChange={event => update('first_name', event.target.value)} /></label><label>Last name<input required autoComplete="family-name" maxLength={80} value={form.last_name} onChange={event => update('last_name', event.target.value)} /></label></div><label>Age<input required type="number" min={1} max={120} inputMode="numeric" value={form.age} onChange={event => update('age', Number(event.target.value))} /></label><div className="form-two"><label>Height<div className="measure-field"><input required type="number" min={form.height_unit === 'cm' ? 50 : 20} max={form.height_unit === 'cm' ? 250 : 100} step="0.1" inputMode="decimal" value={form.height} onChange={event => update('height', Number(event.target.value))} /><select aria-label="Height unit" value={form.height_unit} onChange={event => update('height_unit', event.target.value as 'cm' | 'in')}><option value="cm">cm</option><option value="in">inches</option></select></div></label><label>Weight<div className="measure-field"><input required type="number" min={form.weight_unit === 'kg' ? 20 : 44} max={form.weight_unit === 'kg' ? 500 : 1100} step="0.1" inputMode="decimal" value={form.weight} onChange={event => update('weight', Number(event.target.value))} /><select aria-label="Weight unit" value={form.weight_unit} onChange={event => update('weight_unit', event.target.value as 'kg' | 'lb')}><option value="kg">kg</option><option value="lb">pounds</option></select></div></label></div><fieldset><legend>Which option describes you?</legend><div className="status-options">{statuses.map(option => <label key={option.value} className={form.diabetes_status === option.value ? 'selected' : ''}><input type="radio" name="diabetes-status" value={option.value} checked={form.diabetes_status === option.value} onChange={() => update('diabetes_status', option.value)} /><span>{option.label}</span></label>)}</div></fieldset><button className="primary full-width" type="submit" disabled={saving}><Check size={18} />{saving ? 'Saving your profile…' : 'Continue to my dashboard'}</button><small className="onboarding-note">Research prototype · This information supports wellness personalization and is not used to diagnose a condition.</small></form></main></div>;
+  return <div className="onboarding"><header><Brand /><button className="text-button" onClick={() => void onSignOut()}><LogOut size={16} /> Sign out</button></header><main><section className="onboarding-copy"><span className="pill"><span className="dot" /> YOUR STARTING POINT</span><h1>Let’s personalize<br /><em>your experience.</em></h1><p>These details help your future model understand your individual context. You can still review every meal and prediction before using it.</p><div className="onboarding-private"><ShieldCheck size={21} /><span><strong>Private to your account</strong><small>Saved in your protected AWS data partition.</small></span></div></section><form className="onboarding-form" onSubmit={submit}><div><p className="eyebrow">A FEW DETAILS ABOUT YOU</p><h2>Complete your profile</h2><p>This takes about a minute.</p></div>{error && <div className="notice" role="alert">{error}</div>}<div className="form-two"><label>First name<input required autoComplete="given-name" maxLength={80} value={form.first_name} onChange={event => update('first_name', event.target.value)} /></label><label>Last name<input required autoComplete="family-name" maxLength={80} value={form.last_name} onChange={event => update('last_name', event.target.value)} /></label></div><label>Age<input required type="number" min={1} max={120} inputMode="numeric" placeholder="Age" value={form.age} onChange={event => update('age', event.target.value)} /></label><div className="form-two"><label>Height<div className="measure-field"><input required type="number" min={form.height_unit === 'cm' ? 50 : 20} max={form.height_unit === 'cm' ? 250 : 100} step="0.1" inputMode="decimal" placeholder={form.height_unit === 'cm' ? '170' : '67'} value={form.height} onChange={event => update('height', event.target.value)} /><select aria-label="Height unit" value={form.height_unit} onChange={event => update('height_unit', event.target.value as 'cm' | 'in')}><option value="cm">cm</option><option value="in">inches</option></select></div></label><label>Weight<div className="measure-field"><input required type="number" min={form.weight_unit === 'kg' ? 20 : 44} max={form.weight_unit === 'kg' ? 500 : 1100} step="0.1" inputMode="decimal" placeholder={form.weight_unit === 'kg' ? '70' : '154'} value={form.weight} onChange={event => update('weight', event.target.value)} /><select aria-label="Weight unit" value={form.weight_unit} onChange={event => update('weight_unit', event.target.value as 'kg' | 'lb')}><option value="kg">kg</option><option value="lb">pounds</option></select></div></label></div><fieldset><legend>Which option describes you?</legend><div className="status-options">{statuses.map(option => <label key={option.value} className={form.diabetes_status === option.value ? 'selected' : ''}><input type="radio" name="diabetes-status" value={option.value} checked={form.diabetes_status === option.value} onChange={() => update('diabetes_status', option.value)} /><span>{option.label}</span></label>)}</div></fieldset><button className="primary full-width" type="submit" disabled={saving}><Check size={18} />{saving ? 'Saving your profile…' : 'Continue to my dashboard'}</button><small className="onboarding-note">Research prototype · This information supports wellness personalization and is not used to diagnose a condition.</small></form></main></div>;
 }
 
 function Brand() { return <div className="brand"><span><Leaf size={23} strokeWidth={1.7} /></span><strong>glucose compass<span className="brand-period">.</span></strong></div>; }
