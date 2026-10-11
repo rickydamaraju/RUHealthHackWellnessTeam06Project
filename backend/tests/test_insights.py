@@ -119,3 +119,5 @@ def test_provider_limits_factors_and_requests_nonclinical_language(monkeypatch):
     system_prompt = captured['messages'][0]['content']
     assert 'Never mention insulin' in system_prompt
     assert 'Do not invent activity' in system_prompt
+    assert captured['response_format']['type'] == 'json_schema'
+    assert captured['response_format']['json_schema']['strict'] is True

@@ -16,6 +16,18 @@ class Explanation(BaseModel):
     limitations: str = Field(min_length=1, max_length=1200)
 
 
+EXPLANATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "possible_factors": {"type": "array", "items": {"type": "string"}},
+        "limitations": {"type": "string"},
+    },
+    "required": ["summary", "possible_factors", "limitations"],
+    "additionalProperties": False,
+}
+
+
 def api_key():
     if os.environ.get("GROQ_API_KEY"):
         return os.environ["GROQ_API_KEY"]
@@ -50,7 +62,10 @@ def explain(context: dict):
                    "messages": [{"role": "system", "content": prompt},
                                 {"role": "user", "content": json.dumps(context)}],
                    "temperature": 0.2, "max_tokens": 700,
-                   "response_format": {"type": "json_object"}}
+                   "reasoning_effort": "low",
+                   "response_format": {"type": "json_schema", "json_schema": {
+                       "name": "wellness_insight", "strict": True, "schema": EXPLANATION_SCHEMA,
+                   }}}
         request = Request("https://api.groq.com/openai/v1/chat/completions",
                           data=json.dumps(payload).encode(),
                           headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "User-Agent": "GlucoseCompass/0.1"})
