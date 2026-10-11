@@ -87,6 +87,7 @@ label{font-size:13px;color:#31473b}.pill,.chip{background:#f8faf8;border-color:#
 @media(prefers-reduced-motion:reduce){.page-heading,.summary-grid,.dashboard-grid,.insights-panel,.recent-panel,.meal-form-grid,.health-section,.prediction-panel{animation:none!important}}
 
 /* Keep the meal time control compact and stop iOS from zooming form fields on focus. */
-#meal-time{display:block;min-width:0;max-width:100%;height:46px;padding:10px 12px;line-height:1.2;overflow:hidden}
-#meal-time::-webkit-date-and-time-value{min-width:0;text-align:left}
-@media(max-width:600px){input,textarea,select{font-size:16px}.meal-summary{min-width:0;overflow:hidden}#meal-time{width:100%;min-width:0;max-width:100%;height:44px;padding:8px 10px;font-size:16px}#meal-time::-webkit-date-and-time-value{font-size:16px;line-height:1.2}#meal-time::-webkit-calendar-picker-indicator{margin:0;padding:2px}}
+#meal-time{display:block;box-sizing:border-box;min-width:0;max-width:100%;height:46px;min-height:46px;max-height:46px;padding:10px 12px;line-height:24px;overflow:hidden;-webkit-appearance:none;appearance:none}
+#meal-time::-webkit-date-and-time-value{min-width:0;height:24px;min-height:0;margin:0;text-align:left;line-height:24px}
+#meal-time::-webkit-datetime-edit{display:flex;align-items:center;height:24px;min-height:0;padding:0}
+@media(max-width:600px){input,textarea,select{font-size:16px}.meal-summary{min-width:0;overflow:hidden}#meal-time{width:100%;min-width:0;max-width:100%;height:46px!important;min-height:46px!important;max-height:46px!important;padding:10px 12px!important;font-size:16px;line-height:24px!important}#meal-time::-webkit-date-and-time-value{height:24px!important;min-height:0!important;margin:0;font-size:16px;line-height:24px!important}#meal-time::-webkit-datetime-edit{height:24px!important;min-height:0!important;padding:0}#meal-time::-webkit-calendar-picker-indicator{margin:0;padding:2px}}
