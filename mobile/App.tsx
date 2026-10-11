@@ -10,7 +10,7 @@ const WEBSITE_URL = 'https://d1jg9rtis2fmyi.cloudfront.net';
 const DEXCOM_RETURN_URL = 'glucosecompass://integrations/dexcom';
 
 type AuthMessage = { type: 'AUTHENTICATED'; accessToken: string; apiUrl: string; userId: string };
-type BridgeMessage = AuthMessage | { type: 'SIGNED_OUT' } | { type: 'SYNC_NOW' };
+type BridgeMessage = AuthMessage | { type: 'SIGNED_OUT' } | { type: 'SYNC_NOW' } | { type: 'CONNECT_DEXCOM' };
 
 export default function App() {
   const web = useRef<WebView>(null);
@@ -24,7 +24,7 @@ export default function App() {
     web.current?.injectJavaScript(script);
   }, []);
 
-  const synchronize = useCallback(async (interactive: boolean) => {
+  const synchronize = useCallback(async (interactive: boolean, reconnectDexcom = false) => {
     const session = auth.current;
     if (!session || syncing.current) return;
     syncing.current = true;
@@ -42,13 +42,13 @@ export default function App() {
 
       if (connections.dexcom.configured) {
         const connected = connections.dexcom.status === 'connected' || connections.dexcom.status === 'connected_no_data';
-        if (connected) {
-          await api.syncDexcom();
-        } else if (interactive || !dexcomAlreadyRequested) {
+        if (reconnectDexcom || (!connected && (interactive || !dexcomAlreadyRequested))) {
           const start = await api.startDexcomConnection();
           const result = await WebBrowser.openAuthSessionAsync(start.authorization_url, DEXCOM_RETURN_URL);
           await SecureStore.setItemAsync(dexcomPermissionKey, new Date().toISOString());
           if (result.type === 'success') await api.syncDexcom();
+        } else if (connected) {
+          await api.syncDexcom();
         }
       }
 
@@ -70,6 +70,8 @@ export default function App() {
         if (changedUser) void synchronize(false);
       } else if (message.type === 'SYNC_NOW') {
         void synchronize(true);
+      } else if (message.type === 'CONNECT_DEXCOM') {
+        void synchronize(true, true);
       } else if (message.type === 'SIGNED_OUT') {
         auth.current = null;
       }

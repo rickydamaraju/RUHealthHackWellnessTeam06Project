@@ -24,16 +24,18 @@ const detectPhotoType = (file: File) => photoTypes[file.type.toLowerCase()] ?? e
 
 declare global { interface Window { ReactNativeWebView?: { postMessage: (message: string) => void } } }
 const postToNative = (message: object) => window.ReactNativeWebView?.postMessage(JSON.stringify(message));
-const refreshNativeData = () => {
+const requestNativeData = (type: 'SYNC_NOW' | 'CONNECT_DEXCOM') => {
   if (!window.ReactNativeWebView) return Promise.resolve();
   return new Promise<void>(resolve => {
     const finish = () => { clearTimeout(timer); window.removeEventListener('NATIVE_SYNC_COMPLETE', finish); window.removeEventListener('NATIVE_SYNC_ERROR', finish); resolve(); };
     const timer = window.setTimeout(finish, 60000);
     window.addEventListener('NATIVE_SYNC_COMPLETE', finish, { once: true });
     window.addEventListener('NATIVE_SYNC_ERROR', finish, { once: true });
-    postToNative({ type: 'SYNC_NOW' });
+    postToNative({ type });
   });
 };
+const refreshNativeData = () => requestNativeData('SYNC_NOW');
+const connectNativeDexcom = () => requestNativeData('CONNECT_DEXCOM');
 
 export function App() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
@@ -149,7 +151,7 @@ export function App() {
       {view === 'activity' && <ActivityUpload api={api} onError={setNotice} onReady={refresh} activity={activity} healthRecords={healthRecords} />}
       <footer className="app-footer"><span>Made for your everyday understanding.</span><span>Research prototype · No diagnosis or medication advice</span></footer></main>
     </div>
-    {accountOpen && <div className="mobile-account-overlay" role="dialog" aria-modal="true" aria-label="Account options"><button className="mobile-account-backdrop" aria-label="Close account options" onClick={() => setAccountOpen(false)} /><section><button className="mobile-account-close" aria-label="Close account options" onClick={() => setAccountOpen(false)}><X size={20} /></button><span className="avatar">{preview ? 'P' : (profile?.first_name?.[0] ?? user?.profile.email?.[0] ?? 'Y').toUpperCase()}</span><h2>{preview ? 'Preview workspace' : profile ? `${profile.first_name} ${profile.last_name}` : 'Your account'}</h2><p>{preview ? 'Local demonstration' : String(user?.profile.email ?? 'Your private account')}</p>{!preview && <button className="mobile-connect" onClick={async () => { setAccountOpen(false); setNotice('Opening Dexcom authorization…'); await refreshNativeData(); setNotice('Health connection finished. Your available data is synchronized.'); }}><HeartPulse size={18} /> Connect Dexcom</button>}<button className="mobile-signout" onClick={() => void signOut()}><LogOut size={18} />{preview ? 'Exit preview' : 'Sign out'}</button></section></div>}
+    {accountOpen && <div className="mobile-account-overlay" role="dialog" aria-modal="true" aria-label="Account options"><button className="mobile-account-backdrop" aria-label="Close account options" onClick={() => setAccountOpen(false)} /><section><button className="mobile-account-close" aria-label="Close account options" onClick={() => setAccountOpen(false)}><X size={20} /></button><span className="avatar">{preview ? 'P' : (profile?.first_name?.[0] ?? user?.profile.email?.[0] ?? 'Y').toUpperCase()}</span><h2>{preview ? 'Preview workspace' : profile ? `${profile.first_name} ${profile.last_name}` : 'Your account'}</h2><p>{preview ? 'Local demonstration' : String(user?.profile.email ?? 'Your private account')}</p>{!preview && <button className="mobile-connect" onClick={async () => { setAccountOpen(false); setNotice('Opening Dexcom authorization…'); await connectNativeDexcom(); setNotice('Dexcom connection finished. Your available data is synchronized.'); }}><HeartPulse size={18} /> Connect or change Dexcom</button>}<button className="mobile-signout" onClick={() => void signOut()}><LogOut size={18} />{preview ? 'Exit preview' : 'Sign out'}</button></section></div>}
   </div>;
 }
 
