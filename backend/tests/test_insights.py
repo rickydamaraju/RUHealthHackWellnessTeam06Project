@@ -64,7 +64,12 @@ def test_provider_keeps_reference_context_and_respects_guardrail(monkeypatch, gu
     monkeypatch.setattr(insights, 'urlopen', provider)
     monkeypatch.setattr(insights.guardrails, 'screen_explanation',
                         lambda text: {'status': guardrail_status, 'text': text})
-    result = insights.explain({'kind': 'predicted', 'cgm_context': 'shared_reference_fallback'})
+    result = insights.explain({'kind': 'predicted', 'cgm_context': 'shared_reference_fallback',
+                               'baseline_mg_dl': 100,
+                               'curve': [{'minutes': 0, 'glucose_mg_dl': 100},
+                                         {'minutes': 60, 'glucose_mg_dl': 130},
+                                         {'minutes': 120, 'glucose_mg_dl': 110}],
+                               'meal_macros': {'carbs_g': 40, 'fiber_g': 6}})
     assert json.loads(captured['messages'][1]['content'])['cgm_context'] == 'shared_reference_fallback'
     if guardrail_status == 'passed':
         assert result['status'] == 'ready'
@@ -98,6 +103,29 @@ def test_blocked_explanation_is_regenerated_with_narrow_wording(monkeypatch):
     assert len(prompts) == 2
     assert 'especially narrow observational wording' not in prompts[0]
     assert 'especially narrow observational wording' in prompts[1]
+
+
+def test_repeated_guardrail_blocks_use_screened_numeric_summary(monkeypatch):
+    monkeypatch.setenv('GROQ_API_KEY', 'test-secret')
+    explanation = {'summary': 'Generated wording.', 'possible_factors': ['Generated factor.'],
+                   'limitations': 'Generated limitation.'}
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = json.dumps({
+        'choices': [{'message': {'content': json.dumps(explanation)}}]}).encode()
+    monkeypatch.setattr(insights, 'urlopen', lambda *args, **kwargs: response)
+    statuses = iter(['blocked', 'blocked', 'passed'])
+    monkeypatch.setattr(insights.guardrails, 'screen_explanation',
+                        lambda text: {'status': next(statuses), 'text': text})
+    context = {'kind': 'predicted', 'baseline_mg_dl': 100,
+               'curve': [{'minutes': 0, 'glucose_mg_dl': 100},
+                         {'minutes': 30, 'glucose_mg_dl': 120},
+                         {'minutes': 60, 'glucose_mg_dl': 130},
+                         {'minutes': 120, 'glucose_mg_dl': 110}],
+               'meal_macros': {'carbs_g': 40, 'fiber_g': 6}}
+    result = insights.explain(context)
+    assert result['status'] == 'ready'
+    assert result['source'] == 'numeric_summary'
+    assert 'reaches 130 mg/dL around 60 minutes' in result['summary']
 
 
 @pytest.mark.parametrize('content', ['not JSON', '{"summary": "incomplete"}'])

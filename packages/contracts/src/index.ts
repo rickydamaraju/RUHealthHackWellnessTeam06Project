@@ -38,5 +38,5 @@ export interface Prediction {
   input_summary: { meal_macros: Pick<Nutrition, 'carbs_g' | 'protein_g' | 'fat_g' | 'fiber_g'>; real_cgm_observations: number; reference_cgm_observations: number; cgm_context: 'participant_upload' | 'participant_upload_reanchored' | 'shared_reference_fallback'; reference_cgm_fallback_used: boolean; apple_health_observations: Record<string, number>; prior_meals: number; dexcom_sandbox_excluded: boolean };
 }
 
-export type Insights = { status: 'ready'; summary: string; possible_factors: string[]; limitations: string; generated_at: string }
+export type Insights = { status: 'ready'; summary: string; possible_factors: string[]; limitations: string; source: 'groq' | 'numeric_summary'; generated_at: string }
   | { status: 'unavailable' | 'blocked' | 'insufficient_data'; message: string };

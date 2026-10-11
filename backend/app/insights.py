@@ -83,6 +83,42 @@ def _generate(key: str, context: dict, guardrail_retry: bool) -> Explanation:
         return Explanation.model_validate(decoded)
 
 
+def _numeric_summary(context: dict) -> Explanation:
+    """Produce a bounded graph description if generated wording is rejected."""
+    if context.get("kind") == "observed_glucose":
+        readings = context["readings"]
+        values = [float(point["glucose_mg_dl"]) for point in readings]
+        first, last = values[0], values[-1]
+        highest, lowest = max(values), min(values)
+        direction = "higher" if last > first else "lower" if last < first else "the same"
+        return Explanation(
+            summary=(f"Across the displayed readings, glucose ranges from {lowest:.0f} to {highest:.0f} mg/dL. "
+                     f"The last displayed value is {direction} than the first, moving from {first:.0f} to {last:.0f} mg/dL."),
+            possible_factors=[
+                f"Displayed range: {highest - lowest:.0f} mg/dL",
+                f"Highest displayed value: {highest:.0f} mg/dL",
+                f"Lowest displayed value: {lowest:.0f} mg/dL",
+            ],
+            limitations="This summary uses only the displayed glucose values. Missing intervals and reasons for changes are not supplied.",
+        )
+    curve = context["curve"]
+    points = sorted(curve, key=lambda point: point["minutes"])
+    peak = max(points, key=lambda point: point["glucose_mg_dl"])
+    first, last = float(context["baseline_mg_dl"]), float(points[-1]["glucose_mg_dl"])
+    peak_value, peak_minute = float(peak["glucose_mg_dl"]), int(peak["minutes"])
+    macros = context.get("meal_macros", {})
+    return Explanation(
+        summary=(f"The predicted curve starts at {first:.0f} mg/dL, reaches {peak_value:.0f} mg/dL around "
+                 f"{peak_minute} minutes, and is {last:.0f} mg/dL at {int(points[-1]['minutes'])} minutes."),
+        possible_factors=[
+            f"Predicted rise to the peak: {peak_value - first:.0f} mg/dL",
+            f"Supplied carbohydrate amount: {float(macros.get('carbs_g', 0)):.0f} g",
+            f"Supplied fiber amount: {float(macros.get('fiber_g', 0)):.0f} g",
+        ],
+        limitations="This is a model-generated curve based on the supplied inputs. The displayed relationships cannot establish cause.",
+    )
+
+
 def explain(context: dict):
     unavailable = {"status": "unavailable", "message": "Insights are temporarily unavailable. Your graph and saved data are still available."}
     try:
@@ -95,9 +131,13 @@ def explain(context: dict):
                 return unavailable
             checked = guardrails.screen_explanation("\n".join([explanation.summary, *explanation.possible_factors, explanation.limitations]))
             if checked["status"] == "passed":
-                return {"status": "ready", **explanation.model_dump(), "generated_at": datetime.now(timezone.utc).isoformat()}
+                return {"status": "ready", **explanation.model_dump(), "source": "groq", "generated_at": datetime.now(timezone.utc).isoformat()}
             if checked["status"] != "blocked":
                 return {"status": checked["status"], "message": "The wellness check is temporarily unavailable. Try again later."}
+        fallback = _numeric_summary(context)
+        checked = guardrails.screen_explanation("\n".join([fallback.summary, *fallback.possible_factors, fallback.limitations]))
+        if checked["status"] == "passed":
+            return {"status": "ready", **fallback.model_dump(), "source": "numeric_summary", "generated_at": datetime.now(timezone.utc).isoformat()}
         return {"status": "blocked", "message": "The explanation could not pass the wellness check. Try again later."}
     except Exception:
         # Provider errors and credentials are never returned to the client.
