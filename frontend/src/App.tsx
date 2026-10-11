@@ -222,16 +222,19 @@ function InsightsPanel({ api, prediction, contextKey }: { api: Api | null; predi
     setLoading(true); setError('');
     try {
       const next = prediction ? await api.predictionInsights(prediction) : await api.insights();
-      if (version.current === current) setResult(next);
+      if (version.current === current) {
+        if (next.status === 'ready') setResult(next);
+        else setError(next.message);
+      }
     } catch (err) { if (version.current === current) setError(errorMessage(err)); }
     finally { if (version.current === current) setLoading(false); }
   };
   return <section className="panel insights-panel" aria-busy={loading}>
-    <div className="panel-heading"><div><p className="eyebrow">CONNECT THE DOTS</p><h2>{prediction ? 'Why might this curve look like this?' : 'Your overall pattern'}</h2><p>{prediction ? 'Your meal macros, alongside the predicted response.' : 'A closer look at your glucose history and logged meals.'}</p></div><Sparkles size={22} /></div>
+    <div className="panel-heading"><div><p className="eyebrow">CONNECT THE DOTS</p><h2>{prediction ? 'Why might this curve look like this?' : 'Explain my glucose'}</h2><p>{prediction ? 'Your meal macros, alongside the predicted response.' : 'This explanation uses only the glucose readings displayed in your graph.'}</p></div><Sparkles size={22} /></div>
     {prediction && <div className="insight-macros">{Object.entries(prediction.input_summary.meal_macros).map(([key, value]) => <span key={key}><strong>{Math.round(value)}g</strong> {key.replace('_g', '')}</span>)}</div>}
     {prediction?.input_summary.reference_cgm_fallback_used && <p className="insight-reference">This curve uses a shared reference, not your own glucose measurements.</p>}
-    <div className="insight-body" aria-live="polite">{result?.status === 'ready' ? <><p className="insight-summary">{result.summary}</p><div className="insight-factors">{result.possible_factors.map((factor, i) => <article key={i}><span>0{i + 1}</span><p>{factor}</p></article>)}</div><p className="insight-limitations">{result.limitations}</p></> : <p>{loading ? 'Looking at your graph and meal context…' : error || (result ? result.message : api ? 'Explore possible relationships between your meals and the shape of your graph.' : 'Sign in to generate insights from your own data.')}</p>}</div>
-    <div className="insight-actions"><button className="primary" disabled={!api || loading} onClick={() => void generate()}><Sparkles size={16} />{loading ? 'Generating insights…' : result?.status === 'ready' ? 'Refresh insights' : 'Explain my pattern'}</button><small>AI insights via Groq · Possible factors, not proven causes</small></div>
+    <div className="insight-body" aria-live="polite">{loading ? <p>{prediction ? 'Generating a fresh explanation of this predicted curve…' : 'Looking only at the glucose readings shown above…'}</p> : result?.status === 'ready' ? <><p className="insight-summary">{result.summary}</p><div className="insight-factors">{result.possible_factors.map((factor, i) => <article key={i}><span>0{i + 1}</span><p>{factor}</p></article>)}</div><p className="insight-limitations">{result.limitations}</p><p className="insight-updated">Updated {new Date(result.generated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</p></> : <p>{error || (api ? prediction ? 'Explain the predicted curve and the meal information used for it.' : 'Explain the range, direction, and variation in your displayed glucose readings.' : 'Sign in to generate insights from your own data.')}</p>}{!loading && result?.status === 'ready' && error && <p className="insight-error">A fresh explanation was not available: {error}</p>}</div>
+    <div className="insight-actions"><button className="primary" disabled={!api || loading} onClick={() => void generate()}><Sparkles size={16} />{loading ? 'Generating explanation…' : result?.status === 'ready' ? 'Generate a new explanation' : prediction ? 'Explain this prediction' : 'Explain my glucose'}</button><small>{prediction ? 'AI insights via Groq · Possible factors, not proven causes' : 'AI explanation via Groq · Based only on the displayed glucose series'}</small></div>
   </section>;
 }
 

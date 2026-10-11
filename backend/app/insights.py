@@ -53,6 +53,10 @@ def explain(context: dict):
             "mention insulin, medication, dosing, treatment, disease, risk, safety, or recommendations. Possible factors "
             "may discuss only the supplied macros, meal timing when supplied, and the shape of the supplied curve. "
             "Do not invent activity, sleep, stress, meals, physiology, or personal characteristics. "
+            "When kind is observed_glucose, use only the supplied glucose readings and coverage statistics. Describe the "
+            "range, direction, variability, high and low points, and data gaps that are actually present. Do not mention "
+            "meals, nutrition, activity, causes, or factors that were not supplied; possible_factors should instead list "
+            "one to four directly observed graph characteristics. "
             "Distinguish observed glucose from predicted values. For shared reference predictions explicitly say the "
             "curve is not based on this person's glucose. For reanchored history explain that timestamps were aligned. "
             "For observed history do not attribute a rise to a meal without nearby baseline and post-meal measurements. "
@@ -86,19 +90,14 @@ def explain(context: dict):
         return unavailable
 
 
-def history_context(readings: list[dict], meals: list[dict], has_more: bool):
-    # Match the dashboard's 288 reading window; omit identifiers and free text.
+def glucose_context(readings: list[dict]):
+    """Build an overview explanation from the same glucose series shown on screen."""
     points = [{"timestamp": r["timestamp"], "glucose_mg_dl": float(r["glucose_mg_dl"])} for r in readings]
     times = [datetime.fromisoformat(r['timestamp'].replace('Z', '+00:00')) for r in points]
-    start, end = times[0], times[-1]
-    overlapping = [m for m in meals if start <= datetime.fromisoformat(m['eaten_at'].replace('Z', '+00:00')) <= end]
     gaps = [(b - a).total_seconds() / 60 for a, b in zip(times, times[1:])]
     values = [r['glucose_mg_dl'] for r in points]
-    return {"kind": "observed", "readings": points,
+    return {"kind": "observed_glucose", "readings": points,
             "coverage": {"reading_count": len(points), "start": points[0]['timestamp'], "end": points[-1]['timestamp'],
                          "largest_gap_minutes": max(gaps, default=0), "minimum_mg_dl": min(values),
                          "maximum_mg_dl": max(values), "mean_mg_dl": round(sum(values) / len(values), 1)},
-            "meals": [{"eaten_at": m["eaten_at"], "macros": {k: float(v) for k, v in m["nutrition"].items()}}
-                      for m in overlapping[:30]],
-            "meal_history_truncated": has_more or len(overlapping) > 30,
-            "limitations": "Only meals within the displayed reading window are included. Missing meals and gaps remain unknown."}
+            "limitations": "The explanation covers only the displayed glucose readings. Missing intervals and causes remain unknown."}

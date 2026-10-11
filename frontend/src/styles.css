@@ -91,3 +91,12 @@ label{font-size:13px;color:#31473b}.pill,.chip{background:#f8faf8;border-color:#
 #meal-time::-webkit-date-and-time-value{min-width:0;height:24px;min-height:0;margin:0;text-align:left;line-height:24px}
 #meal-time::-webkit-datetime-edit{display:flex;align-items:center;height:24px;min-height:0;padding:0}
 @media(max-width:600px){input,textarea,select{font-size:16px}.meal-summary{min-width:0;overflow:hidden}#meal-time{width:100%;min-width:0;max-width:100%;height:46px!important;min-height:46px!important;max-height:46px!important;padding:10px 12px!important;font-size:16px;line-height:24px!important}#meal-time::-webkit-date-and-time-value{height:24px!important;min-height:0!important;margin:0;font-size:16px;line-height:24px!important}#meal-time::-webkit-datetime-edit{height:24px!important;min-height:0!important;padding:0}#meal-time::-webkit-calendar-picker-indicator{margin:0;padding:2px}}
+
+/* Keep graph labels legible without increasing either chart's footprint. */
+.glucose-chart text{font-size:13px;font-weight:750;fill:#405a4a}
+.prediction-chart text{font-size:13px;font-weight:700;fill:#405a4a}
+.prediction-chart .axis-title{font-size:14px;font-weight:800;fill:#294b38}
+.prediction-chart .point-label{font-size:13px;font-weight:800;fill:#244b38}
+.insight-updated{margin-top:13px;font-size:10px;font-weight:650;color:#78877c}
+.insight-error{margin-top:15px;padding:11px 13px;border-radius:9px;background:#fbf1e8;color:#765548;font-size:11px}
+@media(max-width:600px){.glucose-chart text{font-size:22px;font-weight:800}.prediction-chart text{font-size:22px;font-weight:800}.prediction-chart .axis-title{font-size:24px}.prediction-chart .point-label{font-size:22px}.insight-updated{font-size:11px}.insight-error{font-size:12px}}

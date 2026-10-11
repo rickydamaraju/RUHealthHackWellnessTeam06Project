@@ -345,13 +345,9 @@ def prediction_insights(body: PredictionInsightInput, owner: str = Depends(ident
 @app.post("/insights")
 def overall_insights(owner: str = Depends(identity)):
     readings = list(reversed(storage.list_records(owner, "CGM#", 288)["items"]))
-    history = storage.list_records(owner, "MEAL_HISTORY#")
-    if len(readings) < 4 or not history["items"]:
-        return {"status": "insufficient_data", "message": "Add a meal and at least four glucose readings to explore your patterns."}
-    context = insights.history_context(readings, history["items"], history.get("has_more", False))
-    if not context["meals"]:
-        return {"status": "insufficient_data", "message": "Log a meal within your displayed glucose history to connect macros with the graph."}
-    return insights.explain(context)
+    if len(readings) < 4:
+        return {"status": "insufficient_data", "message": "Add at least four glucose readings to explain the displayed pattern."}
+    return insights.explain(insights.glucose_context(readings))
 
 
 handler = Mangum(app, lifespan="off")

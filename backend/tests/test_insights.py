@@ -14,32 +14,30 @@ def test_insights_routes_require_authentication():
     assert client.post('/insights/prediction', json={}).status_code == 401
 
 
-def test_history_filters_meals_and_removes_private_fields():
+def test_overview_context_contains_only_displayed_glucose():
     readings = [{'timestamp': f'2026-10-11T12:{m}:00Z', 'glucose_mg_dl': Decimal(v)}
                 for m, v in [('00', '100'), ('05', '110'), ('40', '120'), ('45', '105')]]
-    meals = [{'eaten_at': time, 'description': 'private text', 'id': 'private id',
-              'nutrition': {'carbs_g': Decimal('42')}}
-             for time in ['2026-10-10T12:00:00Z', '2026-10-11T12:10:00Z']]
-    context = insights.history_context(readings, meals, True)
-    assert len(context['meals']) == 1
+    context = insights.glucose_context(readings)
+    assert context['kind'] == 'observed_glucose'
     assert context['coverage']['largest_gap_minutes'] == 35
-    assert context['meal_history_truncated'] is True
-    assert 'private' not in json.dumps(context)
-    assert context['meals'][0]['macros']['carbs_g'] == 42
+    assert context['coverage']['minimum_mg_dl'] == 100
+    assert context['coverage']['maximum_mg_dl'] == 120
+    assert 'meal' not in json.dumps(context).lower()
 
 
-def test_missing_meal_coverage_does_not_call_groq(monkeypatch):
+def test_overview_explains_glucose_without_meals(monkeypatch):
     def records(owner, prefix, *args):
         assert owner == 'participant-1'
-        if prefix == 'CGM#':
-            return {'items': [{'timestamp': f'2026-10-11T12:{m}:00Z', 'glucose_mg_dl': 100}
-                              for m in ['15', '10', '05', '00']]}
-        return {'items': [{'eaten_at': '2026-10-10T12:00:00Z', 'nutrition': {}}]}
+        assert prefix == 'CGM#'
+        return {'items': [{'timestamp': f'2026-10-11T12:{m}:00Z', 'glucose_mg_dl': 100}
+                          for m in ['15', '10', '05', '00']]}
     monkeypatch.setattr('app.main.storage.list_records', records)
-    provider = MagicMock()
+    provider = MagicMock(return_value={'status': 'ready'})
     monkeypatch.setattr(insights, 'explain', provider)
-    assert overall_insights(owner='participant-1')['status'] == 'insufficient_data'
-    provider.assert_not_called()
+    assert overall_insights(owner='participant-1')['status'] == 'ready'
+    context = provider.call_args.args[0]
+    assert context['kind'] == 'observed_glucose'
+    assert 'meals' not in context
 
 
 def test_unconfigured_provider(monkeypatch):
