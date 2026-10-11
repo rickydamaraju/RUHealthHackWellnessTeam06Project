@@ -6,6 +6,7 @@ import math
 import os
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
+from statistics import median
 from uuid import uuid4
 
 import boto3
@@ -63,6 +64,30 @@ def _reanchor_cgm(readings: list[dict], cutoff: datetime) -> list[dict]:
         {**item, "timestamp": timestamp(_when(item["timestamp"]) + shift)}
         for item in readings if _when(item["timestamp"]) >= earliest
     ]
+
+
+def _median_fill_cgm(readings: list[dict]) -> list[dict]:
+    """Create a five-minute history and fill only missing intervals with this person's median."""
+    if not readings:
+        return []
+    normalized = [(_when(item["timestamp"]).replace(second=0, microsecond=0), float(item["glucose_mg_dl"]), item) for item in readings]
+    latest = max(at for at, _, _ in normalized)
+    earliest = max(min(at for at, _, _ in normalized), latest - timedelta(days=7) + timedelta(minutes=5))
+    normalized = [(at, value, item) for at, value, item in normalized if at >= earliest]
+    person_median = float(median(value for _, value, _ in normalized))
+    by_time = {at: (value, item) for at, value, item in normalized}
+    cadence_anchor = latest
+    filled = []
+    current = cadence_anchor
+    while current >= earliest:
+        observed = by_time.get(current)
+        if observed:
+            value, item = observed
+            filled.append({**item, "timestamp": timestamp(current), "glucose_mg_dl": value})
+        else:
+            filled.append({"timestamp": timestamp(current), "glucose_mg_dl": person_median, "source": "participant_median_imputation"})
+        current -= timedelta(minutes=5)
+    return list(reversed(filled))
 
 
 @lru_cache
@@ -176,14 +201,14 @@ def _ensure_recent_cgm(readings: list[dict], meal_time: datetime):
 
 
 def _prediction_cgm(readings: list[dict], start: datetime, cutoff: datetime, allow_reference_fallback: bool):
-    recent = _real_cgm(readings, start, cutoff)
+    recent = _median_fill_cgm(_real_cgm(readings, start, cutoff))
     try:
         _ensure_recent_cgm(recent, cutoff)
         return recent, "participant_upload"
     except HTTPException:
         if not allow_reference_fallback:
             raise
-    uploaded = _uploaded_cgm(readings)
+    uploaded = _median_fill_cgm(_uploaded_cgm(readings))
     if uploaded:
         aligned = _reanchor_cgm(uploaded, cutoff)
         try:

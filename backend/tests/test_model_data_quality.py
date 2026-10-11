@@ -2,7 +2,7 @@ import csv
 import io
 from datetime import datetime, timezone
 
-from app.model_adapter import _payload, _prediction_cgm, _real_cgm, _reference_cgm
+from app.model_adapter import _median_fill_cgm, _payload, _prediction_cgm, _real_cgm, _reference_cgm
 
 
 def meal():
@@ -65,7 +65,7 @@ def test_prediction_prefers_participant_upload_and_falls_back_only_when_missing(
         {"timestamp": "2026-10-11T11:55:00Z", "glucose_mg_dl": 104, "import_id": "upload"},
     ]
     selected, context = _prediction_cgm(own, start, cutoff, True)
-    assert selected == own
+    assert [item["glucose_mg_dl"] for item in selected] == [100, 102, 104]
     assert context == "participant_upload"
 
     reference = [
@@ -77,3 +77,15 @@ def test_prediction_prefers_participant_upload_and_falls_back_only_when_missing(
     selected, context = _prediction_cgm([], start, cutoff, True)
     assert selected == reference
     assert context == "shared_reference_fallback"
+
+
+def test_missing_participant_intervals_use_that_participants_median():
+    readings = [
+        {"timestamp": "2026-10-11T11:40:00Z", "glucose_mg_dl": 90, "import_id": "upload"},
+        {"timestamp": "2026-10-11T11:45:00Z", "glucose_mg_dl": 100, "import_id": "upload"},
+        {"timestamp": "2026-10-11T11:55:00Z", "glucose_mg_dl": 110, "import_id": "upload"},
+    ]
+    filled = _median_fill_cgm(readings)
+    missing = next(item for item in filled if item["timestamp"] == "2026-10-11T11:50:00Z")
+    assert missing["glucose_mg_dl"] == 100
+    assert missing["source"] == "participant_median_imputation"

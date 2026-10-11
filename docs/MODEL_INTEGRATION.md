@@ -19,6 +19,9 @@ The development stack invokes the real-time SageMaker endpoint named by the
    and mark that fallback in the response audit.
 4. Saved meal nutrition becomes the endpoint's carbohydrate, protein, fat, and
    fiber input. Prior saved meals become historical meal events.
+   CGM is normalized to five-minute intervals. Missing glucose intervals are
+   filled with the median of that same participant's valid values. The shared
+   held-out reference uses its own median for its missing intervals.
 5. Apple Health heart rate is mapped to the model's HR field. Active-energy and
    workout-energy samples are converted to the model's activity-energy and MET
    fields using the user's saved weight. Zero, missing, invalid, and duplicate
