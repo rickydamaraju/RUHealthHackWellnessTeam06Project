@@ -29,6 +29,21 @@ class MealInput(Input):
         return value.astimezone(timezone.utc)
 
 
+class PredictionMealInput(Input):
+    description: str = Field(default="", max_length=2000)
+    eaten_at: datetime
+    foods: list[Portion] = Field(min_length=1, max_length=30)
+    entry_method: Literal["search", "text", "photo"] = "search"
+    photo_id: UUID | None = None
+
+    @field_validator("eaten_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("Meal timestamp must include its timezone offset.")
+        return value.astimezone(timezone.utc)
+
+
 class TextInput(Input):
     text: str = Field(min_length=3, max_length=2000)
 

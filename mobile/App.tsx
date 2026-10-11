@@ -9,6 +9,19 @@ import { clearNativeSession, loadNativeSession, saveNativeSession, validNativeAc
 
 const WEBSITE_URL = 'https://d1jg9rtis2fmyi.cloudfront.net';
 const DEXCOM_RETURN_URL = 'glucosecompass://integrations/dexcom';
+const DISABLE_ZOOM = `
+  (function () {
+    var viewport = document.querySelector('meta[name="viewport"]');
+    if (!viewport) {
+      viewport = document.createElement('meta');
+      viewport.name = 'viewport';
+      document.head.appendChild(viewport);
+    }
+    viewport.content = 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+    document.addEventListener('gesturestart', function (event) { event.preventDefault(); }, { passive: false });
+  })();
+  true;
+`;
 
 type AuthMessage = NativeSession;
 type BridgeMessage = AuthMessage | { type: 'SIGNED_OUT' } | { type: 'SYNC_NOW' } | { type: 'CONNECT_DEXCOM' };
@@ -129,6 +142,7 @@ export default function App() {
     <WebView
       ref={web}
       source={{ uri: WEBSITE_URL }}
+      injectedJavaScriptBeforeContentLoaded={DISABLE_ZOOM}
       style={styles.web}
       onMessage={onMessage}
       onLoadEnd={() => setLoading(false)}

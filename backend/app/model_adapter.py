@@ -117,7 +117,7 @@ def _ensure_recent_cgm(readings: list[dict], meal_time: datetime):
         raise HTTPException(422, {"code": "real_cgm_history_required", "message": "The uploaded glucose history must reach within five minutes of the meal and span at least ten pre-meal minutes. Dexcom sandbox data is excluded."})
 
 
-def predict_and_store(owner: str, meal: dict):
+def predict_and_store(owner: str, meal: dict, *, persist: bool = True):
     endpoint = os.environ.get("MODEL_ENDPOINT_NAME")
     if not endpoint:
         raise HTTPException(503, {"code": "model_not_connected", "message": "Your meal is saved. The prediction model has not been connected yet."})
@@ -167,5 +167,6 @@ def predict_and_store(owner: str, meal: dict):
             "prior_meals": len(prior_meals), "dexcom_sandbox_excluded": True,
         },
     }
-    storage.save_record(owner, f"PREDICTION#{prediction_id}", saved, create_only=True)
+    if persist:
+        storage.save_record(owner, f"PREDICTION#{prediction_id}", saved, create_only=True)
     return storage.public_record(saved)

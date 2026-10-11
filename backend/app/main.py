@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from mangum import Mangum
 from . import catalog, dexcom, meal_photo, meal_text, model_adapter, storage
-from .schemas import ActivityImportInput, HealthSyncInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, ProfileInput, TextInput, timestamp
+from .schemas import ActivityImportInput, HealthSyncInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, PredictionMealInput, ProfileInput, TextInput, timestamp
 
 app = FastAPI(title="Glucose Compass API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -313,6 +313,21 @@ def predict(body: PredictionInput, owner: str = Depends(identity)):
     if not meal:
         raise HTTPException(404, "Meal not found.")
     return model_adapter.predict_and_store(owner, meal)
+
+
+@app.post("/predictions/meal")
+def predict_hypothetical_meal(body: PredictionMealInput, owner: str = Depends(identity)):
+    if body.photo_id:
+        photo = storage.get_record(owner, f"PHOTO#{body.photo_id}")
+        if not photo or photo.get("status") != "ready":
+            raise HTTPException(422, "Upload the selected meal photo before requesting a prediction.")
+    foods, nutrition = catalog.meal_nutrition(body.foods)
+    hypothetical = {
+        "id": str(uuid4()), "description": body.description.strip(),
+        "eaten_at": timestamp(body.eaten_at), "created_at": timestamp(datetime.now(timezone.utc)),
+        "foods": foods, "nutrition": nutrition, "entry_method": body.entry_method,
+    }
+    return model_adapter.predict_and_store(owner, hypothetical, persist=False)
 
 
 handler = Mangum(app, lifespan="off")
