@@ -26,7 +26,7 @@ export interface Connections {
 export type DiabetesStatus = 'type_1' | 'type_2' | 'unknown' | 'no_diabetes';
 export interface ProfileInput { first_name: string; last_name: string; age: number; height: number; height_unit: 'cm' | 'in'; weight: number; weight_unit: 'kg' | 'lb'; diabetes_status: DiabetesStatus }
 export interface Profile extends ProfileInput { height_cm: number; weight_kg: number; created_at: string; updated_at: string }
-export interface Interpretation { items: { name: string; grams: number | null; matches: Food[] }[]; requires_confirmation: true }
+export interface Interpretation { items: { name: string; grams: number; portion_description: string; confidence: number; matches: Food[] }[]; requires_confirmation: true; source: 'groq_usda' }
 export interface PhotoAnalysis { items: { name: string; grams: number; confidence: number; matches: Food[] }[]; requires_confirmation: true; preview_url: string }
 export interface Page<T> { items: T[]; has_more: boolean }
 export interface Prediction {

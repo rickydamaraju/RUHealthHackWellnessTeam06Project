@@ -30,7 +30,7 @@ def health():
 
 @app.get("/me")
 def me(owner: str = Depends(identity)):
-    return {"id": owner, "model_connected": bool(os.environ.get("MODEL_ENDPOINT_NAME")), "text_interpretation_enabled": bool(os.environ.get("BEDROCK_MODEL_ID"))}
+    return {"id": owner, "model_connected": bool(os.environ.get("MODEL_ENDPOINT_NAME")), "text_interpretation_enabled": bool(os.environ.get("GROQ_API_KEY") or os.environ.get("GROQ_SECRET_ARN"))}
 
 
 @app.get("/connections")
