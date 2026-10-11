@@ -31,9 +31,9 @@ export default function App() {
     const api = createApi(session.apiUrl, async () => session.accessToken);
     try {
       const connections = await api.connections();
-      const permissionKey = `permissions-requested:${session.userId}`;
+      const permissionKey = `permissions-requested-${session.userId}`;
       const alreadyRequested = await SecureStore.getItemAsync(permissionKey);
-      const dexcomPermissionKey = `dexcom-requested:${session.userId}`;
+      const dexcomPermissionKey = `dexcom-requested-${session.userId}`;
       const dexcomAlreadyRequested = await SecureStore.getItemAsync(dexcomPermissionKey);
 
       if (interactive || !alreadyRequested || connections.apple_health.status !== 'not_connected') {
