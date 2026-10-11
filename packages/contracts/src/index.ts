@@ -30,8 +30,9 @@ export interface PhotoAnalysis { items: { name: string; grams: number; confidenc
 export interface Page<T> { items: T[]; has_more: boolean }
 export interface Prediction {
   id: string; meal_id: string; created_at: string; model_version: string;
-  baseline_mg_dl: number; curve: { minutes: 30 | 60 | 90 | 120; glucose_mg_dl: number }[];
+  baseline_mg_dl: number; curve: { minutes: number; glucose_mg_dl: number }[];
   peak_mg_dl: number; time_to_peak_minutes: number; excursion_mg_dl: number;
   feature_contributions: Record<string, unknown>[]; uncertainty: unknown | null;
   quality_flags: string[]; explanation: string; guardrail_status: 'passed' | 'blocked' | 'unavailable';
+  input_summary: { meal_macros: Pick<Nutrition, 'carbs_g' | 'protein_g' | 'fat_g' | 'fiber_g'>; real_cgm_observations: number; apple_health_observations: Record<string, number>; prior_meals: number; dexcom_sandbox_excluded: boolean };
 }

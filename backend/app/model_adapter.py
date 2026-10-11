@@ -1,70 +1,42 @@
-"""Stable boundary between the product API and the team's person-specific model."""
+"""Stable boundary between the product API and the hosted SageMaker model."""
+import csv
+import io
 import json
 import math
 import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+
 import boto3
 from botocore.config import Config
 from fastapi import HTTPException
 from pydantic import ValidationError
+
 from . import guardrails, storage
 from .schemas import ModelOutput, timestamp
 
 
-def _payload(meal: dict, readings: list[dict], activity: list[dict] | None = None, profile: dict | None = None, health: list[dict] | None = None) -> dict:
-    activity = activity or []
-    health = health or []
-    # Missing observations stay missing. In particular, zero-valued HealthKit
-    # aggregate buckets are not evidence that the participant did no activity.
-    valid_readings = [item for item in readings if _positive(item.get("glucose_mg_dl"))]
-    valid_activity = [
-        {key: value for key, value in item.items() if key == "timestamp" or (key in {"steps", "active_energy_kcal", "heart_rate_bpm"} and _positive(value))}
-        for item in activity
-    ]
-    valid_activity = [item for item in valid_activity if len(item) > 1]
-    valid_health = [item for item in health if _valid_health_record(item)]
-    return {
-        "schema_version": "1.0",
-        "participant": {key: profile[key] for key in ("age", "height_cm", "weight_kg", "diabetes_status") if profile and key in profile},
-        "meal": {
-            "id": meal["id"],
-            "eaten_at": meal["eaten_at"],
-            "description": meal.get("description", ""),
-            "nutrition": meal["nutrition"],
-            "foods": meal["foods"],
-        },
-        "cgm_history": [
-            {"timestamp": item["timestamp"], "glucose_mg_dl": item["glucose_mg_dl"]}
-            for item in reversed(valid_readings)
-        ],
-        "activity_history": [
-            {key: item[key] for key in ("timestamp", "steps", "active_energy_kcal", "heart_rate_bpm") if key in item}
-            for item in reversed(valid_activity)
-        ],
-        "heart_rate": [
-            {"timestamp": item["timestamp"], "heart_rate_bpm": item["heart_rate_bpm"]}
-            for item in reversed(valid_activity) if "heart_rate_bpm" in item
-        ] + [
-            {"timestamp": item["timestamp"], "heart_rate_bpm": item["value"]}
-            for item in reversed(valid_health) if item.get("metric") == "heart_rate_bpm"
-        ],
-        "apple_health_history": [
-            {key: item[key] for key in ("metric", "timestamp", "end_timestamp", "value", "duration_seconds", "energy_kcal", "activity_type") if key in item}
-            for item in reversed(valid_health)
-        ],
-        "data_availability": {
-            "cgm_observations": len(valid_readings),
-            "activity_observations": len(valid_activity),
-            "apple_health_observations": len(valid_health),
-            "missing_values_are_not_zero": True,
-        },
-        "medications": [],
-    }
-
-
 def _positive(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0
+
+
+def _when(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+
+
+def _real_cgm(readings: list[dict], start: datetime, cutoff: datetime) -> list[dict]:
+    """Use participant uploads only; Dexcom sandbox rows never reach the model."""
+    selected = []
+    for item in readings:
+        try:
+            observed_at = _when(item["timestamp"])
+            glucose = float(item.get("glucose_mg_dl", 0))
+        except (KeyError, TypeError, ValueError):
+            continue
+        uploaded = bool(item.get("import_id")) or item.get("source") in {"cgm_upload", "user_upload"}
+        if uploaded and item.get("source") != "dexcom" and start <= observed_at < cutoff and 40 <= glucose <= 400:
+            selected.append(item)
+    return sorted(selected, key=lambda item: item["timestamp"])
 
 
 def _valid_health_record(item: dict) -> bool:
@@ -73,60 +45,127 @@ def _valid_health_record(item: dict) -> bool:
     return _positive(item.get("value"))
 
 
+def _history_csv(readings: list[dict], health: list[dict], prior_meals: list[dict], profile: dict | None) -> str:
+    """Adapt DynamoDB records to the exact CSV contract of glucose44."""
+    columns = ["Timestamp", "glucose", "HR", "METs", "Calories (Activity)", "Meal Type", "Carbs", "Protein", "Fat", "Fiber", "Calories"]
+    rows: dict[str, dict] = {}
+
+    def row(at: str) -> dict:
+        return rows.setdefault(at, {name: "" for name in columns} | {"Timestamp": at})
+
+    for item in readings:
+        row(item["timestamp"])["glucose"] = float(item["glucose_mg_dl"])
+
+    weight_kg = float(profile.get("weight_kg", 0)) if profile else 0
+    for item in health:
+        if not _valid_health_record(item):
+            continue
+        target = row(item["timestamp"])
+        metric = item.get("metric")
+        if metric == "heart_rate_bpm":
+            target["HR"] = float(item["value"])
+        elif metric == "active_energy_kcal":
+            target["Calories (Activity)"] = float(item["value"])
+            duration = (_when(item.get("end_timestamp", item["timestamp"])) - _when(item["timestamp"])).total_seconds() / 3600
+            if weight_kg > 0 and duration > 0:
+                target["METs"] = round(min(18.0, max(1.0, 1.0 + float(item["value"]) / (weight_kg * duration))), 3)
+        elif metric == "workout" and _positive(item.get("energy_kcal")) and weight_kg > 0:
+            hours = float(item["duration_seconds"]) / 3600
+            target["Calories (Activity)"] = float(item["energy_kcal"])
+            target["METs"] = round(min(18.0, max(1.0, 1.0 + float(item["energy_kcal"]) / (weight_kg * hours))), 3)
+
+    for meal in prior_meals:
+        target = row(meal["eaten_at"])
+        nutrition = meal.get("nutrition", {})
+        target.update({
+            "Meal Type": meal.get("description") or "Saved meal",
+            "Carbs": nutrition.get("carbs_g", ""), "Protein": nutrition.get("protein_g", ""),
+            "Fat": nutrition.get("fat_g", ""), "Fiber": nutrition.get("fiber_g", ""),
+            "Calories": nutrition.get("calories", ""),
+        })
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=columns, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows[key] for key in sorted(rows))
+    return output.getvalue()
+
+
+def _payload(meal: dict, readings: list[dict], activity: list[dict] | None = None, profile: dict | None = None,
+             health: list[dict] | None = None, prior_meals: list[dict] | None = None) -> dict:
+    """Create the deployed endpoint request. Activity is retained for API compatibility."""
+    del activity
+    nutrition = meal["nutrition"]
+    return {
+        "history_csv": _history_csv(readings, health or [], prior_meals or [], profile),
+        "meal_time": meal["eaten_at"],
+        "macros": {
+            "carbs": nutrition["carbs_g"], "protein": nutrition["protein_g"],
+            "fat": nutrition["fat_g"], "fiber": nutrition["fiber_g"],
+        },
+        "guard_minutes": 0,
+        "utc_offset_minutes": 0,
+    }
+
+
+def _ensure_recent_cgm(readings: list[dict], meal_time: datetime):
+    recent = [item for item in readings if timedelta(0) < meal_time - _when(item["timestamp"]) <= timedelta(minutes=15)]
+    if len(recent) < 3:
+        raise HTTPException(422, {"code": "real_cgm_history_required", "message": "This model needs at least three real uploaded glucose readings during the 15 minutes before the meal. Dexcom sandbox data is excluded."})
+    times = sorted(_when(item["timestamp"]) for item in recent)
+    if times[-1] < meal_time - timedelta(minutes=5) or times[-1] - times[0] < timedelta(minutes=10):
+        raise HTTPException(422, {"code": "real_cgm_history_required", "message": "The uploaded glucose history must reach within five minutes of the meal and span at least ten pre-meal minutes. Dexcom sandbox data is excluded."})
+
+
 def predict_and_store(owner: str, meal: dict):
     endpoint = os.environ.get("MODEL_ENDPOINT_NAME")
     if not endpoint:
         raise HTTPException(503, {"code": "model_not_connected", "message": "Your meal is saved. The prediction model has not been connected yet."})
-    readings = storage.readings_before(owner, meal["eaten_at"], 2016)
-    activity = storage.activity_before(owner, meal["eaten_at"], 2016)
-    cutoff = datetime.fromisoformat(meal["eaten_at"].replace("Z", "+00:00"))
-    health_start = timestamp(cutoff - timedelta(days=7))
-    health = storage.health_before(owner, health_start, meal["eaten_at"], 10000)
+    cutoff = _when(meal["eaten_at"])
+    start = cutoff - timedelta(days=7)
+    readings = _real_cgm(storage.readings_before(owner, meal["eaten_at"], 2016), start, cutoff)
+    _ensure_recent_cgm(readings, cutoff)
+    health = storage.health_before(owner, timestamp(start), meal["eaten_at"], 10000)
     profile = storage.get_record(owner, "PROFILE")
-    if not any(_positive(item.get("glucose_mg_dl")) for item in readings):
-        raise HTTPException(422, {"code": "cgm_history_required", "message": "Upload CGM history before requesting a prediction."})
+    prior_meals = [item for item in storage.meals_before(owner, timestamp(start), meal["eaten_at"], 200) if item.get("id") != meal["id"]]
+    payload = _payload(meal, readings, profile=profile, health=health, prior_meals=prior_meals)
     try:
-        response = boto3.client(
-            "sagemaker-runtime",
-            config=Config(connect_timeout=3, read_timeout=20, retries={"max_attempts": 1}),
-        ).invoke_endpoint(
-            EndpointName=endpoint,
-            ContentType="application/json",
-            Accept="application/json",
-            Body=json.dumps(_payload(meal, readings, activity, profile, health)).encode(),
+        response = boto3.client("sagemaker-runtime", config=Config(connect_timeout=3, read_timeout=30, retries={"max_attempts": 1})).invoke_endpoint(
+            EndpointName=endpoint, ContentType="application/json", Accept="application/json", Body=json.dumps(payload).encode(),
         )
         result = ModelOutput.model_validate_json(response["Body"].read())
     except (ValidationError, ValueError, KeyError, json.JSONDecodeError):
         raise HTTPException(502, "The model returned an invalid prediction. Check the model contract.") from None
     except Exception:
-        # Participant inputs and vendor details must not leak into the response or logs.
         raise HTTPException(503, "The prediction service is temporarily unavailable.") from None
 
     peak_point = max(result.curve, key=lambda point: point.glucose_mg_dl)
     excursion = peak_point.glucose_mg_dl - result.baseline_mg_dl
     explanation = (
-        f"This wellness estimate has a peak of {peak_point.glucose_mg_dl:.0f} mg/dL "
-        f"about {peak_point.minutes} minutes after the meal, an excursion of {excursion:.0f} mg/dL "
-        "from the model baseline. It is not a diagnosis or medication recommendation."
+        f"This wellness estimate predicts a peak near {peak_point.glucose_mg_dl:.0f} mg/dL about {peak_point.minutes} minutes after the meal, "
+        f"an excursion of about {excursion:.0f} mg/dL from the model baseline. It uses the saved meal nutrition, real uploaded glucose history, "
+        "and supported Apple Health context. It is not a diagnosis or medication recommendation."
     )
     screened = guardrails.screen_explanation(explanation)
+    health_counts: dict[str, int] = {}
+    for item in health:
+        if _valid_health_record(item):
+            metric = item.get("metric", "unknown")
+            health_counts[metric] = health_counts.get(metric, 0) + 1
     prediction_id = str(uuid4())
-    created_at = timestamp(datetime.now(timezone.utc))
     saved = {
-        "id": prediction_id,
-        "meal_id": meal["id"],
-        "created_at": created_at,
-        "model_version": result.model_version,
-        "baseline_mg_dl": result.baseline_mg_dl,
+        "id": prediction_id, "meal_id": meal["id"], "created_at": timestamp(datetime.now(timezone.utc)),
+        "model_version": result.model_version, "baseline_mg_dl": result.baseline_mg_dl,
         "curve": [point.model_dump() for point in result.curve],
-        "peak_mg_dl": peak_point.glucose_mg_dl,
-        "time_to_peak_minutes": peak_point.minutes,
-        "excursion_mg_dl": round(excursion, 3),
-        "feature_contributions": result.feature_contributions,
-        "uncertainty": result.uncertainty,
-        "quality_flags": result.quality_flags,
-        "explanation": screened["text"],
-        "guardrail_status": screened["status"],
+        "peak_mg_dl": peak_point.glucose_mg_dl, "time_to_peak_minutes": peak_point.minutes,
+        "excursion_mg_dl": round(excursion, 3), "feature_contributions": result.feature_contributions,
+        "uncertainty": result.uncertainty, "quality_flags": result.quality_flags,
+        "explanation": screened["text"], "guardrail_status": screened["status"],
+        "input_summary": {
+            "meal_macros": {"carbs_g": meal["nutrition"]["carbs_g"], "protein_g": meal["nutrition"]["protein_g"], "fat_g": meal["nutrition"]["fat_g"], "fiber_g": meal["nutrition"]["fiber_g"]},
+            "real_cgm_observations": len(readings), "apple_health_observations": health_counts,
+            "prior_meals": len(prior_meals), "dexcom_sandbox_excluded": True,
+        },
     }
     storage.save_record(owner, f"PREDICTION#{prediction_id}", saved, create_only=True)
     return storage.public_record(saved)

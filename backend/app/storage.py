@@ -119,6 +119,17 @@ def readings_before(owner: str, cutoff: str, limit=2016):
     return unpack(response.get("Items", []))
 
 
+def meals_before(owner: str, start: str, cutoff: str, limit=200):
+    """Return saved meals in a bounded time window for model personalization."""
+    response = table().query(
+        KeyConditionExpression=Key("pk").eq(f"USER#{owner}") & Key("sk").between(
+            f"MEAL_HISTORY#{start}", f"MEAL_HISTORY#{cutoff}\uffff"
+        ),
+        Limit=limit, ScanIndexForward=True, ConsistentRead=True,
+    )
+    return unpack(response.get("Items", []))
+
+
 def activity_before(owner: str, cutoff: str, limit=2016):
     response = table().query(
         KeyConditionExpression=Key("pk").eq(f"USER#{owner}") & Key("sk").between("ACTIVITY#", f"ACTIVITY#{cutoff}"),

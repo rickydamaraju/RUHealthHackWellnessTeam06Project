@@ -137,12 +137,17 @@ class ModelOutput(Input):
     feature_contributions: list[dict] = Field(default_factory=list)
     uncertainty: dict | None = None
     quality_flags: list[str] = Field(default_factory=list)
+    peak_mg_dl: float | None = None
+    time_to_peak_minutes: int | None = None
+    excursion_mg_dl: float | None = None
+    population_curve: list[CurvePoint] = Field(default_factory=list)
+    participant_id_used: bool | None = None
 
     @model_validator(mode="after")
     def require_prediction_horizons(self):
-        minutes = [point.minutes for point in self.curve]
-        if sorted(minutes) != [30, 60, 90, 120]:
-            raise ValueError("The model must return one point at 30, 60, 90, and 120 minutes.")
+        minutes = {point.minutes for point in self.curve}
+        if not {30, 60, 90, 120}.issubset(minutes):
+            raise ValueError("The model must include 30, 60, 90, and 120 minute points.")
         return self
 
 

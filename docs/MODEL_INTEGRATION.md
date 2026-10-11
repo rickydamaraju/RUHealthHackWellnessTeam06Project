@@ -1,56 +1,58 @@
-# Model integration contract
+# Production prediction pipeline
 
-The application does not contain a glucose model. It exposes a stable boundary so the modeling team can deploy any compatible container behind an Amazon SageMaker real-time endpoint.
+The development stack invokes the real-time SageMaker endpoint named by the
+`modelEndpointName` CDK context value. The current deployment uses
+`glucose44-demo-20261011-040922` and model version
+`original-adaptive-44-v1`.
 
-## Request sent to SageMaker
+## Request path
 
-The API sends `application/json` with this structure:
+1. Cognito authorizes `POST /predictions` and the API loads the requested meal
+   only from that Cognito subject's DynamoDB partition.
+2. The feature adapter loads seven days of that user's earlier meals, Apple
+   Health records, profile weight, and uploaded CGM readings.
+3. Dexcom sandbox rows are always excluded. A prediction requires at least
+   three participant-uploaded readings in the 15 minutes before the meal, with
+   the latest reading no more than five minutes old.
+4. Saved meal nutrition becomes the endpoint's carbohydrate, protein, fat, and
+   fiber input. Prior saved meals become historical meal events.
+5. Apple Health heart rate is mapped to the model's HR field. Active-energy and
+   workout-energy samples are converted to the model's activity-energy and MET
+   fields using the user's saved weight. Zero, missing, invalid, and duplicate
+   records are excluded before feature construction. The hosted model does not
+   currently consume age, diabetes status, steps, or basal energy directly.
+6. The backend sends the resulting timestamped CSV and current meal macros to
+   SageMaker. The endpoint returns a five-minute curve through 120 minutes,
+   feature sensitivities, a pointwise uncertainty band, quality flags, peak,
+   time to peak, and excursion.
+7. The API validates the response, recomputes the displayed summary from the
+   returned curve, and sends only the user-facing explanation through the
+   Amazon Bedrock wellness guardrail.
+8. The prediction, input-count audit, sandbox-exclusion flag, model version,
+   uncertainty, and guardrail status are stored under the Cognito user ID and
+   returned to the web or mobile client.
+
+The frontend renders the complete curve, its uncertainty band, 30/60/90/120
+minute points, peak, time to peak, excursion, input counts, model limitations,
+and the Bedrock wellness-check status.
+
+## Endpoint contract
 
 ```json
 {
-  "schema_version": "1.0",
-  "meal": {
-    "id": "uuid",
-    "eaten_at": "2026-10-10T16:30:00Z",
-    "description": "lunch",
-    "nutrition": { "carbs_g": 42, "protein_g": 20, "fat_g": 9, "fiber_g": 5, "calories": 330 },
-    "foods": []
+  "history_csv": "Timestamp,glucose,HR,METs,...",
+  "meal_time": "2026-10-10T12:00:00Z",
+  "macros": {
+    "carbs": 45,
+    "protein": 20,
+    "fat": 12,
+    "fiber": 6
   },
-  "cgm_history": [{ "timestamp": "2026-10-10T16:25:00Z", "glucose_mg_dl": 104 }],
-  "heart_rate": [],
-  "medications": []
+  "guard_minutes": 0,
+  "utc_offset_minutes": 0
 }
 ```
 
-`cgm_history` contains at most 2,016 readings up to the meal time, in chronological order. The empty multimodal arrays are reserved so heart-rate and medication support can be added without changing the top-level contract.
-
-## Response required from SageMaker
-
-```json
-{
-  "model_version": "participant-model-2026-10-10",
-  "baseline_mg_dl": 104,
-  "curve": [
-    { "minutes": 30, "glucose_mg_dl": 126 },
-    { "minutes": 60, "glucose_mg_dl": 142 },
-    { "minutes": 90, "glucose_mg_dl": 132 },
-    { "minutes": 120, "glucose_mg_dl": 116 }
-  ],
-  "feature_contributions": [
-    { "feature": "carbs_g", "importance": 0.61 },
-    { "feature": "baseline_mg_dl", "importance": 0.22 }
-  ],
-  "uncertainty": { "method": "bootstrap", "lower_mg_dl": [115, 128, 119, 106], "upper_mg_dl": [137, 156, 145, 126] },
-  "quality_flags": []
-}
-```
-
-The API rejects a response unless it contains exactly the 30, 60, 90, and 120-minute horizons. It computes peak, time-to-peak, and excursion itself, screens the wellness explanation with Bedrock Guardrails, and stores the result in the authenticated participant's DynamoDB partition.
-
-Connect an existing endpoint during deployment:
-
-```bash
-npm run deploy -- -c stage=dev -c modelEndpointName=YOUR_ENDPOINT_NAME
-```
-
-The CDK stack grants the API permission to invoke only that endpoint. Rebuild and redeploy if the endpoint name changes.
+The deployed model requires real pre-meal glucose context. Apple Health and
+meal data supplement that context; they cannot replace the required baseline
+for this model version.

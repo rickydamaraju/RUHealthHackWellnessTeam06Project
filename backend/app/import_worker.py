@@ -63,7 +63,8 @@ def process(record):
     with storage.table().batch_writer() as batch:
         for reading in readings:
             prefix = "ACTIVITY" if activity else "CGM"
-            batch.put_item(Item=storage.pack({"pk": f"USER#{owner}", "sk": f"{prefix}#{reading['timestamp']}", **reading, "import_id": import_id}))
+            source = "activity_upload" if activity else "cgm_upload"
+            batch.put_item(Item=storage.pack({"pk": f"USER#{owner}", "sk": f"{prefix}#{reading['timestamp']}", **reading, "import_id": import_id, "source": source}))
     prepared_key = f"prepared/{owner}/{'activity/' if activity else ''}{import_id}.json"
     storage.s3().put_object(Bucket=bucket, Key=prepared_key, Body=json.dumps(readings).encode(), ContentType="application/json")
     storage.save_record(owner, f"{record_prefix}#{import_id}", {
