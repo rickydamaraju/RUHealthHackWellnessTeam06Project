@@ -18,7 +18,14 @@ const DISABLE_ZOOM = `
       document.head.appendChild(viewport);
     }
     viewport.content = 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
-    document.addEventListener('gesturestart', function (event) { event.preventDefault(); }, { passive: false });
+    document.documentElement.style.touchAction = 'pan-x pan-y';
+    if (document.body) document.body.style.touchAction = 'pan-x pan-y';
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
+      document.addEventListener(name, function (event) { event.preventDefault(); }, { passive: false });
+    });
+    document.addEventListener('touchmove', function (event) {
+      if (event.touches && event.touches.length > 1) event.preventDefault();
+    }, { passive: false });
   })();
   true;
 `;
@@ -151,6 +158,7 @@ export default function App() {
       thirdPartyCookiesEnabled
       javaScriptEnabled
       domStorageEnabled
+      bounces={false}
       allowsBackForwardNavigationGestures
       allowsInlineMediaPlayback
       applicationNameForUserAgent="GlucoseCompassMobile/1.0"
