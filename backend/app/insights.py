@@ -38,12 +38,7 @@ def api_key():
     return json.loads(secret["SecretString"]).get("api_key")
 
 
-def explain(context: dict):
-    unavailable = {"status": "unavailable", "message": "Insights are temporarily unavailable. Your graph and meals are still available."}
-    try:
-        key = api_key()
-        if not key:
-            return {"status": "unavailable", "message": "Groq insights have not been connected yet."}
+def _generate(key: str, context: dict, guardrail_retry: bool) -> Explanation:
         prompt = (
             "Explain glucose patterns for a wellness journal. Return only a JSON object with summary (string), "
             "possible_factors (an array of exactly 1-4 short strings), and limitations (string). Use only supplied evidence. "
@@ -62,6 +57,13 @@ def explain(context: dict):
             "For observed history do not attribute a rise to a meal without nearby baseline and post-meal measurements. "
             "Mention missing coverage, sparse data and that associations cannot establish cause. Use plain language."
         )
+        if guardrail_retry:
+            prompt += (
+                " Rewrite with especially narrow observational wording. Discuss only curve coordinates, shape, timing, "
+                "and supplied macronutrient amounts. Do not discuss or disclaim any condition, diagnosis, clinical meaning, "
+                "medication, treatment, dosing, health status, risk, normality, safety, physiology, or recommended action. "
+                "Use 'the curve', 'the displayed values', and 'may relate' rather than medical language."
+            )
         payload = {"model": os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b"),
                    "messages": [{"role": "system", "content": prompt},
                                 {"role": "user", "content": json.dumps(context)}],
@@ -78,13 +80,25 @@ def explain(context: dict):
         decoded = json.loads(result["choices"][0]["message"]["content"])
         if isinstance(decoded, dict) and isinstance(decoded.get("possible_factors"), list):
             decoded["possible_factors"] = decoded["possible_factors"][:4]
-        explanation = Explanation.model_validate(decoded)
-        if any(not value.strip() or len(value) > 700 for value in explanation.possible_factors):
-            return unavailable
-        checked = guardrails.screen_explanation("\n".join([explanation.summary, *explanation.possible_factors, explanation.limitations]))
-        if checked["status"] != "passed":
-            return {"status": checked["status"], "message": "The explanation could not pass the wellness check. Try again later."}
-        return {"status": "ready", **explanation.model_dump(), "generated_at": datetime.now(timezone.utc).isoformat()}
+        return Explanation.model_validate(decoded)
+
+
+def explain(context: dict):
+    unavailable = {"status": "unavailable", "message": "Insights are temporarily unavailable. Your graph and saved data are still available."}
+    try:
+        key = api_key()
+        if not key:
+            return {"status": "unavailable", "message": "Groq insights have not been connected yet."}
+        for attempt in range(2):
+            explanation = _generate(key, context, guardrail_retry=attempt == 1)
+            if any(not value.strip() or len(value) > 700 for value in explanation.possible_factors):
+                return unavailable
+            checked = guardrails.screen_explanation("\n".join([explanation.summary, *explanation.possible_factors, explanation.limitations]))
+            if checked["status"] == "passed":
+                return {"status": "ready", **explanation.model_dump(), "generated_at": datetime.now(timezone.utc).isoformat()}
+            if checked["status"] != "blocked":
+                return {"status": checked["status"], "message": "The wellness check is temporarily unavailable. Try again later."}
+        return {"status": "blocked", "message": "The explanation could not pass the wellness check. Try again later."}
     except Exception:
         # Provider errors and credentials are never returned to the client.
         return unavailable

@@ -74,6 +74,32 @@ def test_provider_keeps_reference_context_and_respects_guardrail(monkeypatch, gu
         assert 'summary' not in result
 
 
+def test_blocked_explanation_is_regenerated_with_narrow_wording(monkeypatch):
+    monkeypatch.setenv('GROQ_API_KEY', 'test-secret')
+    prompts = []
+    explanation = {'summary': 'The curve rises and then moves back toward its starting value.',
+                   'possible_factors': ['The largest change occurs in the first hour.'],
+                   'limitations': 'Only the displayed values were supplied.'}
+
+    def provider(request, timeout):
+        prompts.append(json.loads(request.data)['messages'][0]['content'])
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            'choices': [{'message': {'content': json.dumps(explanation)}}]}).encode()
+        return response
+
+    statuses = iter(['blocked', 'passed'])
+    monkeypatch.setattr(insights, 'urlopen', provider)
+    monkeypatch.setattr(insights.guardrails, 'screen_explanation',
+                        lambda text: {'status': next(statuses), 'text': text})
+
+    result = insights.explain({'kind': 'predicted'})
+    assert result['status'] == 'ready'
+    assert len(prompts) == 2
+    assert 'especially narrow observational wording' not in prompts[0]
+    assert 'especially narrow observational wording' in prompts[1]
+
+
 @pytest.mark.parametrize('content', ['not JSON', '{"summary": "incomplete"}'])
 def test_malformed_provider_response_is_unavailable(monkeypatch, content):
     monkeypatch.setenv('GROQ_API_KEY', 'test-secret')
