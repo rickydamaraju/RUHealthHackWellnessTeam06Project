@@ -254,7 +254,7 @@ def predict_and_store(owner: str, meal: dict, *, persist: bool = True, allow_ref
     explanation = (
         f"This wellness estimate predicts a peak near {peak_point.glucose_mg_dl:.0f} mg/dL about {peak_point.minutes} minutes after the meal, "
         f"an excursion of about {excursion:.0f} mg/dL from the model baseline. It uses the saved meal nutrition, {context_text}, "
-        "and supported Apple Health context. It is not a diagnosis or medication recommendation."
+        "and supported Apple Health context. It is a wellness estimate for exploring personal patterns."
     )
     screened = guardrails.screen_explanation(explanation)
     health_counts: dict[str, int] = {}
