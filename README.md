@@ -133,3 +133,11 @@ packages/api-client/   browser-independent API client
 scripts/               USDA catalog preparation
 docs/                  model handoff contract
 ```
+
+## Groq pattern insights
+
+For local backend development, copy `.env.example` to `.env` and fill in `GROQ_API_KEY`. Install `backend/requirements-dev.txt` into `.venv`, then run `npm run dev:api`; this loads `.env` through Uvicorn. The local frontend preview still uses no cloud account. Real journal insights require the configured Cognito, storage, and Bedrock guardrail services, or deployment with the AWS secret below.
+
+The Overview includes **Explain my pattern**, which interprets the same 288 recent CGM readings shown in the dashboard alongside confirmed meal macros within that window. The prediction page offers a separate explanation of the displayed curve and its meal macros. Insights describe possible relationships rather than proven causes. Shared reference and reanchored prediction context are explicitly included. Numeric predictions still come from SageMaker, and a slow or unavailable Groq response does not prevent viewing the graph.
+
+Deploy the updated CDK stack and set the `api_key` field in the AWS Secrets Manager secret identified by the new `GroqSecretArn` output. The backend reads that secret; never put a Groq key in frontend configuration or a `VITE_` environment variable. For a separately configured local backend, `GROQ_API_KEY` is also supported. `GROQ_MODEL` defaults to `openai/gpt-oss-20b` and can be changed in the Lambda environment. Responses must pass the existing Bedrock wellness guardrail before the explanation is displayed. Missing credentials, provider failures, blocked wording, and insufficient data have explicit UI states.

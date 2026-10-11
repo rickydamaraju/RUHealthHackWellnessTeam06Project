@@ -92,6 +92,11 @@ export class WellnessStack extends Stack {
         generateStringKey: 'setup_nonce', excludePunctuation: true,
       },
     });
+    const groqSecret = new secretsmanager.Secret(this, 'GroqSecret', {
+      description: 'Groq insights API key. Set api_key after deployment.',
+      generateSecretString: { secretStringTemplate: JSON.stringify({ api_key: '' }), generateStringKey: 'setup_nonce', excludePunctuation: true },
+    });
+    new CfnOutput(this, 'GroqSecretArn', { value: groqSecret.secretArn });
     const backendCode = lambda.DockerImageCode.fromImageAsset(path.join(repo, 'backend'), { platform: ecrAssets.Platform.LINUX_AMD64 });
     const environment = { TABLE_NAME: records.tableName, CONNECTION_INDEX: connectionIndexName, DATA_BUCKET: files.bucketName, MODELS_BUCKET: models.bucketName, FALLBACK_CGM_KEY: 'reference-data/shared_cgm_reference_v1.csv', BEDROCK_MODEL_ID: props.bedrockModelId ?? '', MODEL_ENDPOINT_NAME: props.modelEndpointName ?? '', GUARDRAIL_ID: guardrail.attrGuardrailId, GUARDRAIL_VERSION: guardrailVersion.attrVersion, DEXCOM_SECRET_ARN: dexcomSecret.secretArn };
     const apiFunction = new lambda.DockerImageFunction(this, 'ApiFunction', {
@@ -100,6 +105,9 @@ export class WellnessStack extends Stack {
     });
     records.grantReadWriteData(apiFunction);
     dexcomSecret.grantRead(apiFunction);
+    apiFunction.addEnvironment('GROQ_SECRET_ARN', groqSecret.secretArn);
+    apiFunction.addEnvironment('GROQ_MODEL', 'openai/gpt-oss-20b');
+    groqSecret.grantRead(apiFunction);
     apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['s3:PutObject'], resources: [files.arnForObjects('users/*')] }));
     apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [files.arnForObjects('users/*')] }));
     models.grantRead(apiFunction);

@@ -145,6 +145,28 @@ class CurvePoint(Input):
     glucose_mg_dl: float = Field(gt=0)
 
 
+class InsightMacros(Input):
+    carbs_g: float = Field(ge=0, le=10000)
+    protein_g: float = Field(ge=0, le=10000)
+    fat_g: float = Field(ge=0, le=10000)
+    fiber_g: float = Field(ge=0, le=10000)
+
+
+class PredictionInsightInput(Input):
+    baseline_mg_dl: float = Field(gt=0, le=2000)
+    curve: list[CurvePoint] = Field(min_length=4, max_length=121)
+    meal_macros: InsightMacros
+    cgm_context: Literal['participant_upload', 'participant_upload_reanchored', 'shared_reference_fallback']
+    quality_flags: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator('quality_flags')
+    @classmethod
+    def bounded_flags(cls, values):
+        if any(len(value) > 500 for value in values):
+            raise ValueError('Quality flags are too long.')
+        return values
+
+
 class ModelOutput(Input):
     model_version: str = Field(min_length=1)
     curve: list[CurvePoint] = Field(min_length=4)

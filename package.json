@@ -5,6 +5,7 @@
   "workspaces": ["frontend", "mobile", "infrastructure", "packages/contracts", "packages/api-client"],
   "scripts": {
     "dev": "npm run dev --workspace frontend",
+    "dev:api": ".venv/bin/python -m uvicorn app.main:app --app-dir backend --env-file .env --host 127.0.0.1 --port 8000 --reload",
     "build": "npm run build --workspace frontend",
     "check": "npm run check --workspaces --if-present",
     "test:backend": "PYTHONPATH=backend .venv/bin/python -m pytest backend/tests -q",

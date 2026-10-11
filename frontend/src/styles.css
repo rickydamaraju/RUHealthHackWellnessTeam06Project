@@ -24,3 +24,23 @@
 .health-section{margin-bottom:34px}.section-title{display:flex;align-items:center;gap:12px;margin:0 0 15px 3px;color:#315439}.section-title>svg{width:38px;height:38px;padding:9px;border-radius:10px;background:#eaf0e3}.section-title h2{font-size:18px}.section-title p{font-size:12px;font-weight:500;color:#7e8c7b;margin-top:4px}.health-section>.panel{margin-top:18px}
 small,.field-help,.panel-heading p,.summary-card>p,.meal-main p,.empty-row p,.format-card p,.format-card>small,.drop-zone small,.food-result small,.photo-details small,.photo-analysis-status small,.prediction-inputs span,.prediction-panel details{font-weight:500}
 @media(max-width:600px){.sidebar{height:76px;padding:4px 5px calc(4px + env(safe-area-inset-bottom))}.main-shell{padding-bottom:76px}.sidebar nav{gap:0}.nav-item{min-width:0;gap:5px;padding:8px 1px;font-weight:600}.nav-item>span:not(.nav-dot){font-size:10px;line-height:1.15;font-weight:600;text-align:center}.nav-item svg{width:20px;height:20px}.summary-grid-two .summary-card:last-child{grid-column:auto;display:block}.summary-grid-two .summary-card:last-child .summary-value{font-size:29px;margin:14px 0 11px;display:block}.summary-grid-two .summary-card:last-child p{margin-top:0}.topbar>span{font-size:9px;font-weight:650}.topbar>div{font-size:10px;font-weight:550}.eyebrow{font-size:11px;font-weight:700}.page-heading p:not(.eyebrow){font-size:12px;font-weight:500}.summary-label{font-size:11px;font-weight:600}.summary-card>p{font-size:10px}.panel-heading p{font-size:10px}.panel-heading .chip{font-size:9px;font-weight:600}.panel-foot,.panel-foot>.muted{font-size:9px;font-weight:550}.chart-empty p{font-size:11px;font-weight:500}.empty-row p{font-size:10px}.app-footer{font-size:9px;font-weight:500}.meal-main h3{font-size:12px;font-weight:600}.meal-main p{font-size:10px}.meal-macro strong{font-size:11px;font-weight:600}.meal-macro small{font-size:9px;font-weight:500}.tabs button{font-size:11px;font-weight:600}.field-help{font-size:11px}.food-result strong{font-size:12px;font-weight:600}.food-result small{font-size:10px}.macro-grid span{font-size:10px;font-weight:600}.drop-zone>span:not(.empty-icon){font-size:12px;font-weight:500}.drop-zone small{font-size:10px}.format-card p{font-size:12px}.format-card>small{font-size:10px}.section-title{margin-left:0}.section-title h2{font-size:17px}.section-title p{font-size:11px}.health-section{margin-bottom:28px}}
+
+/* Pattern insight panels use the journal's original visual styles. */
+.insights-panel{margin-bottom:24px;overflow:hidden}
+.insights-panel .panel-heading{align-items:center;border-bottom:1px solid #e4e8df}
+.insights-panel .panel-heading h2{margin:7px 0}
+.insights-panel .panel-heading>svg{color:#214e3d}
+.insight-body{padding:22px 30px;color:#536a55}
+.insight-summary{font-size:14px;line-height:1.8}
+.insight-factors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px;margin-top:20px}
+.insight-factors article{display:flex;gap:14px;padding:16px 0;border-top:1px solid #e4e8df}
+.insight-factors article>span{color:#638a66;font-size:20px}
+.insight-factors p{font-size:12px;line-height:1.8}
+.insight-limitations{border-top:1px solid #e4e8df;padding-top:16px;margin-top:12px;font-size:11px;color:#798278}
+.insight-actions{padding:0 30px 24px;display:flex;align-items:center;flex-wrap:wrap;gap:14px}
+.insight-actions small{font-size:10px;color:#798278}
+.insight-macros{display:flex;flex-wrap:wrap;gap:24px;padding:20px 30px 0}
+.insight-macros span{font-size:11px;text-transform:capitalize;color:#798278}
+.insight-macros strong{display:block;font-family:Georgia,serif;font-size:25px;font-weight:400;color:#214e3d;margin-bottom:4px}
+.insight-reference{margin:20px 30px 0;padding:12px 15px;background:#f4f1e8;color:#786d4c;border-left:3px solid #9d8b57;font-size:11px}
+@media(max-width:600px){.insight-body{padding:20px}.insight-factors{grid-template-columns:1fr}.insight-actions{padding:0 20px 20px}.insight-macros{padding:18px 20px 0;gap:18px}.insight-reference{margin:18px 20px 0}}

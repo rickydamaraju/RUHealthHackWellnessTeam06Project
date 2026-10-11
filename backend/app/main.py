@@ -6,8 +6,8 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from mangum import Mangum
-from . import catalog, dexcom, meal_photo, meal_text, model_adapter, storage
-from .schemas import ActivityImportInput, HealthSyncInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, PredictionMealInput, ProfileInput, TextInput, timestamp
+from . import catalog, dexcom, insights, meal_photo, meal_text, model_adapter, storage
+from .schemas import ActivityImportInput, HealthSyncInput, ImportInput, MealInput, PhotoUploadInput, PredictionInput, PredictionInsightInput, PredictionMealInput, ProfileInput, TextInput, timestamp
 
 app = FastAPI(title="Glucose Compass API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -328,6 +328,30 @@ def predict_hypothetical_meal(body: PredictionMealInput, owner: str = Depends(id
         "foods": foods, "nutrition": nutrition, "entry_method": body.entry_method,
     }
     return model_adapter.predict_and_store(owner, hypothetical, persist=False, allow_reference_fallback=True)
+
+
+@app.post("/insights/prediction")
+def prediction_insights(body: PredictionInsightInput, owner: str = Depends(identity)):
+    # Hypothetical curves are intentionally not persisted. Interpret the displayed
+    # numeric evidence in a separate request so Groq cannot delay the graph.
+    context = body.model_dump()
+    context["kind"] = "predicted"
+    peak = max(context["curve"], key=lambda point: point["glucose_mg_dl"])
+    context["peak_mg_dl"] = peak["glucose_mg_dl"]
+    context["time_to_peak_minutes"] = peak["minutes"]
+    return insights.explain(context)
+
+
+@app.post("/insights")
+def overall_insights(owner: str = Depends(identity)):
+    readings = list(reversed(storage.list_records(owner, "CGM#", 288)["items"]))
+    history = storage.list_records(owner, "MEAL_HISTORY#")
+    if len(readings) < 4 or not history["items"]:
+        return {"status": "insufficient_data", "message": "Add a meal and at least four glucose readings to explore your patterns."}
+    context = insights.history_context(readings, history["items"], history.get("has_more", False))
+    if not context["meals"]:
+        return {"status": "insufficient_data", "message": "Log a meal within your displayed glucose history to connect macros with the graph."}
+    return insights.explain(context)
 
 
 handler = Mangum(app, lifespan="off")

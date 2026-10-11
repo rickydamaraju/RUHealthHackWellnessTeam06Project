@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import type { User, UserManager } from 'oidc-client-ts';
 import { Activity, ArrowDownToLine, ArrowRight, Camera, Check, ChevronDown, CircleHelp, FileText, Footprints, HeartPulse, Image as ImageIcon, ImagePlus, LayoutDashboard, Leaf, LogOut, Plus, Search, ShieldCheck, Sparkles, Trash2, Upload, UserRound, Utensils, X } from 'lucide-react';
 import { createApi, type Api } from '@glucose-compass/api-client';
-import type { ActivityImportStatus, ActivityReading, DiabetesStatus, Food, HealthRecord, ImportStatus, Interpretation, Meal, MealPhoto, MealPhotoContentType, Nutrition, PhotoAnalysis, Prediction, Profile, ProfileInput, Reading, RuntimeConfig } from '@glucose-compass/contracts';
+import type { ActivityImportStatus, ActivityReading, DiabetesStatus, Food, HealthRecord, ImportStatus, Interpretation, Insights, Meal, MealPhoto, MealPhotoContentType, Nutrition, PhotoAnalysis, Prediction, Profile, ProfileInput, Reading, RuntimeConfig } from '@glucose-compass/contracts';
 import { createAuth } from './auth';
 
 type View = 'overview' | 'meal' | 'health' | 'prediction';
@@ -161,11 +161,12 @@ export function App() {
         <div className="summary-grid summary-grid-two"><Summary icon={<Utensils size={20} />} label="Meals in your journal" value={String(meals.length)} detail={hasMoreMeals ? 'Showing your latest 100' : meals.length ? 'Every entry adds context' : 'Your first meal starts the story'} /><Summary icon={<Activity size={20} />} label="Latest glucose reading" value={readings.length ? String(Math.round(readings.at(-1)!.glucose_mg_dl)) : '—'} unit={readings.length ? 'mg/dL' : ''} detail={readings.length ? friendlyDate(readings.at(-1)!.timestamp) : 'Connect your history with a CGM upload'} /></div>
         <div className="dashboard-grid"><section className="panel glucose-panel"><div className="panel-heading"><div><h2>Your glucose history</h2><p>Observed readings, with your meals in context.</p></div><span className="chip">{readings.length ? 'Latest readings' : 'No data yet'}</span></div>{readings.length ? <GlucoseChart readings={readings} /> : <div className="chart-empty"><div className="chart-grid"><i /><i /><i /><i /></div><div className="empty-icon"><Activity size={29} strokeWidth={1.5} /></div><h3>Your story starts with your data</h3><p>Upload a CGM export to see your glucose history here.</p><button className="secondary" onClick={() => setView('health')}><Upload size={16} /> Open health data</button></div>}<div className="panel-foot"><span className="legend-dot" /> Observed glucose <span className="muted">Up to 288 recent readings</span></div></section>
           <section className="next-step-card"><span className="round-icon"><Leaf size={25} /></span><p className="eyebrow">MAKE IT PERSONAL</p><h2>Small entries.<br />More understanding.</h2><p>What you eat and when you eat it add meaningful context to your glucose history.</p><ol><li><span>01</span> Bring in your health data</li><li><span>02</span> Log a meal and its portions</li><li><span>03</span> Predict a meal you may eat</li></ol><button onClick={async () => { if (!window.ReactNativeWebView) { setNotice('Open Glucose Compass on your iPhone to connect Apple Health and Dexcom.'); return; } setNotice('Opening your health connections…'); await refreshNativeData(); setNotice('Your available Apple Health and Dexcom data are synchronized.'); }}><HeartPulse size={18} /> Connect or sync health data</button><button onClick={() => setView(readings.length ? 'prediction' : 'health')}>Take the next step <ArrowRight size={18} /></button></section></div>
+        <InsightsPanel api={api} contextKey={JSON.stringify([readings, meals])} />
         <section className="panel recent-panel"><div className="panel-heading"><div><h2>Recent meals</h2><p>Your latest journal entries.</p></div><span className="chip">Latest {Math.min(3, meals.length)}</span></div>{meals.length ? meals.slice(0, 3).map(meal => <MealRow key={meal.id} meal={meal} />) : <div className="empty-row"><span className="icon-box"><Utensils size={20} /></span><div><strong>A fresh page for your meals</strong><p>Search for a food or describe what you ate.</p></div><button className="text-button" onClick={() => setView('meal')}>Add your first meal <Plus size={16} /></button></div>}</section>
       </>}
       {view === 'meal' && <MealForm api={api} preview={preview} onSaved={saveMeal} onError={setNotice} />}
       {view === 'health' && <><div className="page-heading"><div><p className="eyebrow">YOUR CONNECTED CONTEXT</p><h1>Health data</h1><p>Manage CGM uploads, Apple Health, activity, and heart-rate information together.</p></div></div><section className="health-section"><div className="section-title"><Activity size={21} /><div><h2>CGM data</h2><p>Upload and review your glucose history.</p></div></div><DataUpload api={api} onError={setNotice} onReady={refresh} readings={readings} embedded /></section><section className="health-section"><div className="section-title"><HeartPulse size={21} /><div><h2>Activity and Apple Health</h2><p>Upload activity data or synchronize it from the iPhone app.</p></div></div><ActivityUpload api={api} onError={setNotice} onReady={refresh} activity={activity} healthRecords={healthRecords} embedded /></section></>}
-      {view === 'prediction' && <><div className="page-heading"><div><p className="eyebrow">EXPLORE A FUTURE MEAL</p><h1>Predict a meal response</h1><p>Build a meal without adding it to your journal, then estimate its two-hour response.</p></div></div><MealForm api={api} preview={preview} onError={setNotice} predictionMode onPredicted={result => { setPrediction(result); setNotice(result.input_summary.reference_cgm_fallback_used ? 'Prediction ready using the shared CGM reference because this account has no uploaded CGM.' : 'Prediction ready and checked for wellness language.'); }} />{prediction && <PredictionPanel prediction={prediction} />}</>}
+      {view === 'prediction' && <><div className="page-heading"><div><p className="eyebrow">EXPLORE A FUTURE MEAL</p><h1>Predict a meal response</h1><p>Build a meal without adding it to your journal, then estimate its two-hour response.</p></div></div><MealForm api={api} preview={preview} onError={setNotice} predictionMode onPredicted={result => { setPrediction(result); setNotice(result.input_summary.reference_cgm_fallback_used ? 'Prediction ready using the shared CGM reference because this account has no uploaded CGM.' : 'Prediction ready and checked for wellness language.'); }} />{prediction && <><PredictionPanel prediction={prediction} /><InsightsPanel key={prediction.id} api={api} prediction={prediction} contextKey={prediction.id} /></>}</>}
       <footer className="app-footer"><span>Made for your everyday understanding.</span><span>Research prototype · No diagnosis or medication advice</span></footer></main>
     </div>
     {accountOpen && <div className="mobile-account-overlay" role="dialog" aria-modal="true" aria-label="Account options"><button className="mobile-account-backdrop" aria-label="Close account options" onClick={() => setAccountOpen(false)} /><section><button className="mobile-account-close" aria-label="Close account options" onClick={() => setAccountOpen(false)}><X size={20} /></button><span className="avatar">{preview ? 'P' : (profile?.first_name?.[0] ?? user?.profile.email?.[0] ?? 'Y').toUpperCase()}</span><h2>{preview ? 'Preview workspace' : profile ? `${profile.first_name} ${profile.last_name}` : 'Your account'}</h2><p>{preview ? 'Local demonstration' : String(user?.profile.email ?? 'Your private account')}</p>{!preview && <button className="mobile-connect" onClick={async () => { setAccountOpen(false); setNotice('Opening Dexcom authorization…'); await connectNativeDexcom(); setNotice('Dexcom connection finished. Your available data is synchronized.'); }}><HeartPulse size={18} /> Connect or change Dexcom</button>}<button className="mobile-signout" onClick={() => void signOut()}><LogOut size={18} />{preview ? 'Exit preview' : 'Sign out'}</button></section></div>}
@@ -205,6 +206,34 @@ function mealTitle(meal: Meal) {
   return foods.join(', ') || 'Saved meal';
 }
 function MealRow({ meal }: { meal: Meal }) { return <article className="meal-row"><span className="meal-icon">{meal.photo ? <ImageIcon size={20} /> : <Utensils size={20} />}</span><div className="meal-main"><h3>{mealTitle(meal)}</h3><p>{friendlyDate(meal.eaten_at)}</p></div></article>; }
+
+function InsightsPanel({ api, prediction, contextKey }: { api: Api | null; prediction?: Prediction; contextKey: string }) {
+  const [result, setResult] = useState<Insights | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const version = useRef(0);
+  useEffect(() => {
+    version.current += 1; setResult(null); setError(''); setLoading(false);
+    return () => { version.current += 1; };
+  }, [contextKey, api]);
+  const generate = async () => {
+    if (!api) return;
+    const current = ++version.current;
+    setLoading(true); setError('');
+    try {
+      const next = prediction ? await api.predictionInsights(prediction) : await api.insights();
+      if (version.current === current) setResult(next);
+    } catch (err) { if (version.current === current) setError(errorMessage(err)); }
+    finally { if (version.current === current) setLoading(false); }
+  };
+  return <section className="panel insights-panel" aria-busy={loading}>
+    <div className="panel-heading"><div><p className="eyebrow">CONNECT THE DOTS</p><h2>{prediction ? 'Why might this curve look like this?' : 'Your overall pattern'}</h2><p>{prediction ? 'Your meal macros, alongside the predicted response.' : 'A closer look at your glucose history and logged meals.'}</p></div><Sparkles size={22} /></div>
+    {prediction && <div className="insight-macros">{Object.entries(prediction.input_summary.meal_macros).map(([key, value]) => <span key={key}><strong>{Math.round(value)}g</strong> {key.replace('_g', '')}</span>)}</div>}
+    {prediction?.input_summary.reference_cgm_fallback_used && <p className="insight-reference">This curve uses a shared reference, not your own glucose measurements.</p>}
+    <div className="insight-body" aria-live="polite">{result?.status === 'ready' ? <><p className="insight-summary">{result.summary}</p><div className="insight-factors">{result.possible_factors.map((factor, i) => <article key={i}><span>0{i + 1}</span><p>{factor}</p></article>)}</div><p className="insight-limitations">{result.limitations}</p></> : <p>{loading ? 'Looking at your graph and meal context…' : error || (result ? result.message : api ? 'Explore possible relationships between your meals and the shape of your graph.' : 'Sign in to generate insights from your own data.')}</p>}</div>
+    <div className="insight-actions"><button className="primary" disabled={!api || loading} onClick={() => void generate()}><Sparkles size={16} />{loading ? 'Generating insights…' : result?.status === 'ready' ? 'Refresh insights' : 'Explain my pattern'}</button><small>AI insights via Groq · Possible factors, not proven causes</small></div>
+  </section>;
+}
 
 function PredictionPanel({ prediction }: { prediction: Prediction }) {
   const panel = useRef<HTMLElement>(null);
