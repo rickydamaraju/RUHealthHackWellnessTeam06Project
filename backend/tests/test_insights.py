@@ -94,3 +94,28 @@ def test_provider_error_does_not_expose_credentials(monkeypatch):
     result = insights.explain({})
     assert result['status'] == 'unavailable'
     assert 'private-secret' not in json.dumps(result)
+
+
+def test_provider_limits_factors_and_requests_nonclinical_language(monkeypatch):
+    monkeypatch.setenv('GROQ_API_KEY', 'test-secret')
+    captured = {}
+    explanation = {'summary': 'The predicted curve rises and then settles.',
+                   'possible_factors': ['carbohydrate', 'protein', 'fat', 'fiber', 'invented factor'],
+                   'limitations': 'The shared curve is not personal glucose data.'}
+
+    def provider(request, timeout):
+        captured.update(json.loads(request.data))
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            'choices': [{'message': {'content': json.dumps(explanation)}}]}).encode()
+        return response
+
+    monkeypatch.setattr(insights, 'urlopen', provider)
+    monkeypatch.setattr(insights.guardrails, 'screen_explanation',
+                        lambda text: {'status': 'passed', 'text': text})
+    result = insights.explain({'kind': 'predicted'})
+    assert result['status'] == 'ready'
+    assert result['possible_factors'] == explanation['possible_factors'][:4]
+    system_prompt = captured['messages'][0]['content']
+    assert 'Never mention insulin' in system_prompt
+    assert 'Do not invent activity' in system_prompt
