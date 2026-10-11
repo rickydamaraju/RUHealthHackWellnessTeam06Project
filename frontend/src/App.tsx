@@ -197,7 +197,14 @@ function Onboarding({ api, onSaved, onSignOut }: { api: Api; onSaved: (profile: 
 function Brand() { return <div className="brand"><span><Leaf size={23} strokeWidth={1.7} /></span><strong>glucose compass<span className="brand-period">.</span></strong></div>; }
 function Summary({ icon, label, value, unit, detail }: { icon: React.ReactNode; label: string; value: string; unit?: string; detail: string }) { return <section className="summary-card"><div className="summary-label">{label}<span>{icon}</span></div><div className="summary-value">{value}<small>{unit}</small></div><p>{detail}</p></section>; }
 function Empty({ title, text, icon }: { title: string; text: string; icon: React.ReactNode }) { return <div className="simple-empty"><span className="empty-icon">{icon}</span><h3>{title}</h3><p>{text}</p></div>; }
-function MealRow({ meal }: { meal: Meal }) { return <article className="meal-row"><span className="meal-icon">{meal.photo ? <ImageIcon size={20} /> : <Utensils size={20} />}</span><div className="meal-main"><h3>{meal.description || 'Saved meal'}</h3><p>{friendlyDate(meal.eaten_at)}</p></div></article>; }
+const genericMealNames = new Set(['food', 'food item', 'meal item', 'unknown food', 'visible food']);
+function mealTitle(meal: Meal) {
+  const parts = meal.description.split(',').map(part => part.trim().toLowerCase()).filter(Boolean);
+  if (meal.description.trim() && !(parts.length && parts.every(part => genericMealNames.has(part)))) return meal.description;
+  const foods = [...new Set(meal.foods.map(food => food.name).filter(Boolean))];
+  return foods.join(', ') || 'Saved meal';
+}
+function MealRow({ meal }: { meal: Meal }) { return <article className="meal-row"><span className="meal-icon">{meal.photo ? <ImageIcon size={20} /> : <Utensils size={20} />}</span><div className="meal-main"><h3>{mealTitle(meal)}</h3><p>{friendlyDate(meal.eaten_at)}</p></div></article>; }
 
 function PredictionPanel({ prediction }: { prediction: Prediction }) {
   const panel = useRef<HTMLElement>(null);

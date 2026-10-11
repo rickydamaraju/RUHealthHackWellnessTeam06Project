@@ -47,3 +47,16 @@ def test_photo_analysis_maps_model_foods_to_catalog(monkeypatch):
     result = meal_photo.analyze(b"image", "image/jpeg")
     assert result["items"][0]["grams"] == 150
     assert result["items"][0]["matches"][0]["id"] == "1"
+
+
+def test_photo_analysis_replaces_generic_food_name_with_catalog_name(monkeypatch):
+    class Bedrock:
+        def converse(self, **kwargs):
+            return {"output": {"message": {"content": [{"text": '{"foods":[{"name":"visible food","search_term":"pretzels","grams":60,"confidence":0.8}]}'}]}}}
+
+    food = {"id": "2", "name": "Pretzels, hard, salted", "per_100g": {}, "portions": []}
+    monkeypatch.setenv("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
+    monkeypatch.setattr(meal_photo.boto3, "client", lambda *args, **kwargs: Bedrock())
+    monkeypatch.setattr(meal_photo.catalog, "search", lambda *args, **kwargs: [food])
+    result = meal_photo.analyze_jpeg(b"image")
+    assert result["items"][0]["name"] == "Pretzels, hard, salted"
