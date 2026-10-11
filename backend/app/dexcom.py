@@ -116,8 +116,19 @@ def sync(owner: str) -> dict:
             "access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"],
             "access_expires_at": int(time.time()) + int(tokens.get("expires_in", 7200)) - 60,
         })
-    end = datetime.now(timezone.utc).replace(microsecond=0)
-    start = end - timedelta(days=7)
+    # Sandbox profiles do not all expose data for the current wall-clock week.
+    # dataRange also avoids guessing in production and lets us request the most
+    # recent seven days that the selected Dexcom account actually has.
+    available = _json_request(f"{base_url(config)}/v3/users/self/dataRange", connection["access_token"])
+    egv_range = available.get("egvs") if isinstance(available.get("egvs"), dict) else {}
+    first = _dexcom_datetime((egv_range.get("start") or {}).get("systemTime"))
+    latest = _dexcom_datetime((egv_range.get("end") or {}).get("systemTime"))
+    if first and latest:
+        end = latest + timedelta(seconds=1)  # endDate is exclusive; include the latest observation.
+        start = max(first, end - timedelta(days=7))
+    else:
+        end = datetime.now(timezone.utc).replace(microsecond=0)
+        start = end - timedelta(days=7)
     query = urlencode({"startDate": start.strftime("%Y-%m-%dT%H:%M:%S"), "endDate": end.strftime("%Y-%m-%dT%H:%M:%S")})
     payload = _json_request(f"{base_url(config)}/v3/users/self/egvs?{query}", connection["access_token"])
     records = []
@@ -134,10 +145,10 @@ def sync(owner: str) -> dict:
         for item in records:
             batch.put_item(Item=storage.pack({"pk": f"USER#{owner}", "sk": f"CGM#{item['timestamp']}", **item}))
     storage.archive_observations(owner, "dexcom", records)
-    synced_at = timestamp(end)
+    synced_at = timestamp(datetime.now(timezone.utc))
     connection.update({
         "status": "connected" if records else "connected_no_data", "last_synced_at": synced_at,
-        "last_reading_at": records[-1]["timestamp"] if records else connection.get("last_reading_at"),
+        "last_reading_at": max((item["timestamp"] for item in records), default=connection.get("last_reading_at")),
         "reading_count": len(records), "updated_at": synced_at,
     })
     storage.save_record(owner, "CONNECTION#DEXCOM", connection)
@@ -165,12 +176,17 @@ def _open_json(request: Request) -> dict:
 
 
 def _dexcom_time(value) -> str | None:
+    parsed = _dexcom_datetime(value)
+    return timestamp(parsed) if parsed else None
+
+
+def _dexcom_datetime(value) -> datetime | None:
     if not isinstance(value, str):
         return None
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
-        return timestamp(parsed)
+        return parsed.astimezone(timezone.utc)
     except ValueError:
         return None
