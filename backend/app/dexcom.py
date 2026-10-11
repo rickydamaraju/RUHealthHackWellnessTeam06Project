@@ -123,9 +123,10 @@ def sync(owner: str) -> dict:
     egv_range = available.get("egvs") if isinstance(available.get("egvs"), dict) else {}
     first = _dexcom_datetime((egv_range.get("start") or {}).get("systemTime"))
     latest = _dexcom_datetime((egv_range.get("end") or {}).get("systemTime"))
+    previous_reading = _dexcom_datetime(connection.get("last_reading_at"))
     if first and latest:
         end = latest + timedelta(seconds=1)  # endDate is exclusive; include the latest observation.
-        start = max(first, end - timedelta(days=7))
+        start = max(first, end - timedelta(days=7), previous_reading or first)
     else:
         end = datetime.now(timezone.utc).replace(microsecond=0)
         start = end - timedelta(days=7)
@@ -134,9 +135,14 @@ def sync(owner: str) -> dict:
     records = []
     for item in payload.get("records", []):
         value = item.get("value")
-        when = _dexcom_time(item.get("systemTime"))
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0 or not when:
+        observed_at = _dexcom_datetime(item.get("systemTime"))
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0 or not observed_at:
             continue
+        # Dexcom may return the observation at startDate again. Only archive
+        # and write samples newer than the last successfully stored reading.
+        if previous_reading and observed_at <= previous_reading:
+            continue
+        when = timestamp(observed_at)
         records.append({
             "timestamp": when, "glucose_mg_dl": float(value), "source": "dexcom",
             "source_id": str(item.get("recordId", "")),
@@ -146,10 +152,11 @@ def sync(owner: str) -> dict:
             batch.put_item(Item=storage.pack({"pk": f"USER#{owner}", "sk": f"CGM#{item['timestamp']}", **item}))
     storage.archive_observations(owner, "dexcom", records)
     synced_at = timestamp(datetime.now(timezone.utc))
+    had_readings = bool(connection.get("last_reading_at")) or int(connection.get("reading_count", 0)) > 0
     connection.update({
-        "status": "connected" if records else "connected_no_data", "last_synced_at": synced_at,
+        "status": "connected" if records or had_readings else "connected_no_data", "last_synced_at": synced_at,
         "last_reading_at": max((item["timestamp"] for item in records), default=connection.get("last_reading_at")),
-        "reading_count": len(records), "updated_at": synced_at,
+        "reading_count": int(connection.get("reading_count", 0)) + len(records), "updated_at": synced_at,
     })
     storage.save_record(owner, "CONNECTION#DEXCOM", connection)
     return {"accepted": len(records), "status": connection["status"], "synced_at": synced_at, "last_reading_at": connection.get("last_reading_at")}

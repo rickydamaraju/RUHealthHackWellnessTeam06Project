@@ -4,18 +4,20 @@ import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { createApi } from '@glucose-compass/api-client';
-import { syncAppleHealth } from './src/health';
+import { disableAppleHealthBackgroundSync, enableAppleHealthBackgroundSync, syncAppleHealth } from './src/health';
+import { clearNativeSession, loadNativeSession, saveNativeSession, validNativeAccessToken, type NativeSession } from './src/auth';
 
 const WEBSITE_URL = 'https://d1jg9rtis2fmyi.cloudfront.net';
 const DEXCOM_RETURN_URL = 'glucosecompass://integrations/dexcom';
 
-type AuthMessage = { type: 'AUTHENTICATED'; accessToken: string; apiUrl: string; userId: string };
+type AuthMessage = NativeSession;
 type BridgeMessage = AuthMessage | { type: 'SIGNED_OUT' } | { type: 'SYNC_NOW' } | { type: 'CONNECT_DEXCOM' };
 
 export default function App() {
   const web = useRef<WebView>(null);
   const auth = useRef<AuthMessage | null>(null);
   const syncing = useRef(false);
+  const backgroundCleanup = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -28,7 +30,13 @@ export default function App() {
     const session = auth.current;
     if (!session || syncing.current) return;
     syncing.current = true;
-    const api = createApi(session.apiUrl, async () => session.accessToken);
+    const api = createApi(session.apiUrl, async () => {
+      const current = auth.current;
+      if (!current) throw new Error('Sign in to synchronize health data.');
+      const valid = await validNativeAccessToken(current);
+      auth.current = valid;
+      return valid.accessToken;
+    });
     try {
       const connections = await api.connections();
       const permissionKey = `permissions-requested-${session.userId}`;
@@ -37,7 +45,7 @@ export default function App() {
       const dexcomAlreadyRequested = await SecureStore.getItemAsync(dexcomPermissionKey);
 
       if (interactive || !alreadyRequested || connections.apple_health.status !== 'not_connected') {
-        await syncAppleHealth(api);
+        await syncAppleHealth(api, session.userId);
       }
 
       if (connections.dexcom.configured) {
@@ -61,22 +69,54 @@ export default function App() {
     } finally { syncing.current = false; }
   }, [notifyWebsite]);
 
+  const startBackgroundHealthSync = useCallback(async () => {
+    const cleanup = await enableAppleHealthBackgroundSync(() => { void synchronize(false); });
+    backgroundCleanup.current?.();
+    backgroundCleanup.current = cleanup;
+  }, [synchronize]);
+
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     try {
       const message = JSON.parse(event.nativeEvent.data) as BridgeMessage;
       if (message.type === 'AUTHENTICATED') {
         const changedUser = auth.current?.userId !== message.userId;
-        auth.current = message;
-        if (changedUser) void synchronize(false);
+        const session = {
+          ...message,
+          refreshToken: message.refreshToken ?? (!changedUser ? auth.current?.refreshToken : undefined),
+        };
+        auth.current = session;
+        void saveNativeSession(session);
+        if (changedUser) void synchronize(false).then(startBackgroundHealthSync);
       } else if (message.type === 'SYNC_NOW') {
         void synchronize(true);
       } else if (message.type === 'CONNECT_DEXCOM') {
         void synchronize(true, true);
       } else if (message.type === 'SIGNED_OUT') {
         auth.current = null;
+        void clearNativeSession();
+        backgroundCleanup.current?.();
+        backgroundCleanup.current = null;
+        void disableAppleHealthBackgroundSync();
       }
     } catch { /* Ignore messages not created by the Glucose Compass website. */ }
-  }, [synchronize]);
+  }, [startBackgroundHealthSync, synchronize]);
+
+  useEffect(() => {
+    let active = true;
+    void loadNativeSession().then(session => {
+      if (!active || !session) return;
+      auth.current = session;
+      void synchronize(false).then(async () => {
+        if (!active) return;
+        await startBackgroundHealthSync();
+      });
+    });
+    return () => {
+      active = false;
+      backgroundCleanup.current?.();
+      backgroundCleanup.current = null;
+    };
+  }, [startBackgroundHealthSync, synchronize]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {

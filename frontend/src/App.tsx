@@ -100,7 +100,11 @@ export function App() {
   useEffect(() => {
     if (!user || !config) { postToNative({ type: 'SIGNED_OUT' }); return; }
     void auth.current?.getUser().then(session => {
-      if (session && !session.expired) postToNative({ type: 'AUTHENTICATED', accessToken: session.access_token, apiUrl: config.apiUrl, userId: String(session.profile.sub) });
+      if (session && !session.expired) postToNative({
+        type: 'AUTHENTICATED', accessToken: session.access_token, refreshToken: session.refresh_token,
+        expiresAt: session.expires_at, apiUrl: config.apiUrl, userId: String(session.profile.sub),
+        clientId: config.clientId, cognitoDomain: config.cognitoDomain,
+      });
     });
   }, [user, config]);
   useEffect(() => {

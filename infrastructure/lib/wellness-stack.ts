@@ -20,6 +20,8 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as bedrock from 'aws-cdk-lib/aws-bedrock';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 
 interface Props extends StackProps { stage: string; bedrockModelId?: string; modelEndpointName?: string; createCognitoDomain?: boolean }
 
@@ -50,6 +52,13 @@ export class WellnessStack extends Stack {
     const records = new dynamodb.Table(this, 'Records', {
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING }, sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true }, removalPolicy: RemovalPolicy.RETAIN,
+    });
+    const connectionIndexName = 'ConnectionIndex';
+    records.addGlobalSecondaryIndex({
+      indexName: connectionIndexName,
+      partitionKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ['status'],
     });
     const users = new cognito.UserPool(this, 'Users', {
       selfSignUpEnabled: true, signInAliases: { email: true }, autoVerify: { email: true },
@@ -84,7 +93,7 @@ export class WellnessStack extends Stack {
       },
     });
     const backendCode = lambda.DockerImageCode.fromImageAsset(path.join(repo, 'backend'), { platform: ecrAssets.Platform.LINUX_AMD64 });
-    const environment = { TABLE_NAME: records.tableName, DATA_BUCKET: files.bucketName, MODELS_BUCKET: models.bucketName, BEDROCK_MODEL_ID: props.bedrockModelId ?? '', MODEL_ENDPOINT_NAME: props.modelEndpointName ?? '', GUARDRAIL_ID: guardrail.attrGuardrailId, GUARDRAIL_VERSION: guardrailVersion.attrVersion, DEXCOM_SECRET_ARN: dexcomSecret.secretArn };
+    const environment = { TABLE_NAME: records.tableName, CONNECTION_INDEX: connectionIndexName, DATA_BUCKET: files.bucketName, MODELS_BUCKET: models.bucketName, BEDROCK_MODEL_ID: props.bedrockModelId ?? '', MODEL_ENDPOINT_NAME: props.modelEndpointName ?? '', GUARDRAIL_ID: guardrail.attrGuardrailId, GUARDRAIL_VERSION: guardrailVersion.attrVersion, DEXCOM_SECRET_ARN: dexcomSecret.secretArn };
     const apiFunction = new lambda.DockerImageFunction(this, 'ApiFunction', {
       code: backendCode, memorySize: 1024, timeout: Duration.seconds(25), environment,
       logGroup: new logs.LogGroup(this, 'ApiLogs', { retention: logs.RetentionDays.TWO_WEEKS }),
@@ -97,6 +106,25 @@ export class WellnessStack extends Stack {
     apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['bedrock:ApplyGuardrail'], resources: [guardrail.attrGuardrailArn] }));
     if (props.bedrockModelId) apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: [`arn:${this.partition}:bedrock:${this.region}::foundation-model/${props.bedrockModelId}`] }));
     if (props.modelEndpointName) apiFunction.addToRolePolicy(new iam.PolicyStatement({ actions: ['sagemaker:InvokeEndpoint'], resources: [`arn:${this.partition}:sagemaker:${this.region}:${this.account}:endpoint/${props.modelEndpointName}`] }));
+    const dexcomWorker = new lambda.DockerImageFunction(this, 'DexcomSyncWorker', {
+      code: lambda.DockerImageCode.fromImageAsset(path.join(repo, 'backend'), { platform: ecrAssets.Platform.LINUX_AMD64, cmd: ['app.dexcom_worker.handler'] }),
+      memorySize: 512, timeout: Duration.minutes(4), environment,
+      reservedConcurrentExecutions: 1,
+      logGroup: new logs.LogGroup(this, 'DexcomSyncLogs', { retention: logs.RetentionDays.TWO_WEEKS }),
+    });
+    records.grantReadWriteData(dexcomWorker);
+    dexcomSecret.grantRead(dexcomWorker);
+    dexcomWorker.addToRolePolicy(new iam.PolicyStatement({ actions: ['s3:PutObject'], resources: [files.arnForObjects('users/*')] }));
+    const dexcomSchedule = new events.Rule(this, 'DexcomFiveMinuteSchedule', {
+      schedule: events.Schedule.rate(Duration.minutes(5)),
+      description: 'Fetch new readings for connected Dexcom users every five minutes.',
+    });
+    dexcomSchedule.addTarget(new targets.LambdaFunction(dexcomWorker, { retryAttempts: 2 }));
+    new cloudwatch.Alarm(this, 'DexcomSyncFailures', {
+      metric: dexcomWorker.metricErrors({ period: Duration.minutes(5) }), threshold: 1,
+      evaluationPeriods: 1, treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: 'The scheduled Dexcom synchronization Lambda failed.',
+    });
     const authorizer = new HttpJwtAuthorizer('CognitoAuthorizer', users.userPoolProviderUrl, { jwtAudience: [client.userPoolClientId] });
     const api = new apigw.HttpApi(this, 'Api', {
       defaultAuthorizer: authorizer, defaultAuthorizationScopes: ['wellness-api/access'],

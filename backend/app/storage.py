@@ -90,6 +90,27 @@ def list_records(owner: str, prefix: str, limit=100):
     return {"items": unpack(response.get("Items", [])), "has_more": "LastEvaluatedKey" in response}
 
 
+def dexcom_connection_owners():
+    """Yield users with Dexcom connection records through the sparse connection index."""
+    cursor = None
+    while True:
+        args = {
+            "IndexName": os.environ["CONNECTION_INDEX"],
+            "KeyConditionExpression": Key("sk").eq("CONNECTION#DEXCOM"),
+            "ProjectionExpression": "pk, #connection_status",
+            "ExpressionAttributeNames": {"#connection_status": "status"},
+        }
+        if cursor:
+            args["ExclusiveStartKey"] = cursor
+        response = table().query(**args)
+        for item in unpack(response.get("Items", [])):
+            if item.get("status") in {"connected", "connected_no_data"} and item.get("pk", "").startswith("USER#"):
+                yield item["pk"][5:]
+        cursor = response.get("LastEvaluatedKey")
+        if not cursor:
+            return
+
+
 def readings_before(owner: str, cutoff: str, limit=2016):
     response = table().query(
         KeyConditionExpression=Key("pk").eq(f"USER#{owner}") & Key("sk").between("CGM#", f"CGM#{cutoff}"),
