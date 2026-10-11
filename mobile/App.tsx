@@ -18,14 +18,16 @@ const DISABLE_ZOOM = `
       document.head.appendChild(viewport);
     }
     viewport.content = 'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
-    document.documentElement.style.touchAction = 'pan-x pan-y';
-    if (document.body) document.body.style.touchAction = 'pan-x pan-y';
+    document.documentElement.style.touchAction = 'pan-y';
+    document.documentElement.style.webkitTextSizeAdjust = '100%';
+    if (document.body) document.body.style.touchAction = 'pan-y';
     ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (name) {
       document.addEventListener(name, function (event) { event.preventDefault(); }, { passive: false });
     });
     document.addEventListener('touchmove', function (event) {
       if (event.touches && event.touches.length > 1) event.preventDefault();
     }, { passive: false });
+    document.addEventListener('dblclick', function (event) { event.preventDefault(); }, { passive: false });
   })();
   true;
 `;
@@ -150,15 +152,20 @@ export default function App() {
       ref={web}
       source={{ uri: WEBSITE_URL }}
       injectedJavaScriptBeforeContentLoaded={DISABLE_ZOOM}
+      injectedJavaScript={DISABLE_ZOOM}
       style={styles.web}
       onMessage={onMessage}
-      onLoadEnd={() => setLoading(false)}
+      onLoadEnd={() => { web.current?.injectJavaScript(DISABLE_ZOOM); setLoading(false); }}
       onError={() => { setLoading(false); setError('The app could not reach Glucose Compass. Check your internet connection and try again.'); }}
       sharedCookiesEnabled
       thirdPartyCookiesEnabled
       javaScriptEnabled
       domStorageEnabled
       bounces={false}
+      scalesPageToFit={false}
+      setBuiltInZoomControls={false}
+      setDisplayZoomControls={false}
+      textZoom={100}
       allowsBackForwardNavigationGestures
       allowsInlineMediaPlayback
       applicationNameForUserAgent="GlucoseCompassMobile/1.0"
