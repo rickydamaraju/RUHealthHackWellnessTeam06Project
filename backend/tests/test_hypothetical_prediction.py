@@ -11,8 +11,8 @@ def test_hypothetical_meal_predicts_without_persisting_meal(monkeypatch):
         {"carbs_g": 40, "protein_g": 4, "fat_g": 1, "fiber_g": 1, "calories": 185},
     ))
 
-    def predict(owner, meal, *, persist):
-        captured.update(owner=owner, meal=meal, persist=persist)
+    def predict(owner, meal, *, persist, allow_reference_fallback):
+        captured.update(owner=owner, meal=meal, persist=persist, allow_reference_fallback=allow_reference_fallback)
         return {"id": "prediction"}
 
     monkeypatch.setattr("app.main.model_adapter.predict_and_store", predict)
@@ -22,4 +22,5 @@ def test_hypothetical_meal_predicts_without_persisting_meal(monkeypatch):
     )
     assert predict_hypothetical_meal(body, owner="user-1") == {"id": "prediction"}
     assert captured["persist"] is False
+    assert captured["allow_reference_fallback"] is True
     assert captured["meal"]["nutrition"]["carbs_g"] == 40

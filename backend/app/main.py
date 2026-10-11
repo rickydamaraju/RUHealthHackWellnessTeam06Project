@@ -327,7 +327,7 @@ def predict_hypothetical_meal(body: PredictionMealInput, owner: str = Depends(id
         "eaten_at": timestamp(body.eaten_at), "created_at": timestamp(datetime.now(timezone.utc)),
         "foods": foods, "nutrition": nutrition, "entry_method": body.entry_method,
     }
-    return model_adapter.predict_and_store(owner, hypothetical, persist=False)
+    return model_adapter.predict_and_store(owner, hypothetical, persist=False, allow_reference_fallback=True)
 
 
 handler = Mangum(app, lifespan="off")

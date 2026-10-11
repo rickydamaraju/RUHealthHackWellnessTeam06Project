@@ -35,5 +35,5 @@ export interface Prediction {
   peak_mg_dl: number; time_to_peak_minutes: number; excursion_mg_dl: number;
   feature_contributions: Record<string, unknown>[]; uncertainty: unknown | null;
   quality_flags: string[]; explanation: string; guardrail_status: 'passed' | 'blocked' | 'unavailable';
-  input_summary: { meal_macros: Pick<Nutrition, 'carbs_g' | 'protein_g' | 'fat_g' | 'fiber_g'>; real_cgm_observations: number; apple_health_observations: Record<string, number>; prior_meals: number; dexcom_sandbox_excluded: boolean };
+  input_summary: { meal_macros: Pick<Nutrition, 'carbs_g' | 'protein_g' | 'fat_g' | 'fiber_g'>; real_cgm_observations: number; reference_cgm_observations: number; cgm_context: 'participant_upload' | 'participant_upload_reanchored' | 'shared_reference_fallback'; reference_cgm_fallback_used: boolean; apple_health_observations: Record<string, number>; prior_meals: number; dexcom_sandbox_excluded: boolean };
 }

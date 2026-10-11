@@ -93,7 +93,7 @@ export class WellnessStack extends Stack {
       },
     });
     const backendCode = lambda.DockerImageCode.fromImageAsset(path.join(repo, 'backend'), { platform: ecrAssets.Platform.LINUX_AMD64 });
-    const environment = { TABLE_NAME: records.tableName, CONNECTION_INDEX: connectionIndexName, DATA_BUCKET: files.bucketName, MODELS_BUCKET: models.bucketName, BEDROCK_MODEL_ID: props.bedrockModelId ?? '', MODEL_ENDPOINT_NAME: props.modelEndpointName ?? '', GUARDRAIL_ID: guardrail.attrGuardrailId, GUARDRAIL_VERSION: guardrailVersion.attrVersion, DEXCOM_SECRET_ARN: dexcomSecret.secretArn };
+    const environment = { TABLE_NAME: records.tableName, CONNECTION_INDEX: connectionIndexName, DATA_BUCKET: files.bucketName, MODELS_BUCKET: models.bucketName, FALLBACK_CGM_KEY: 'reference-data/shared_cgm_reference_v1.csv', BEDROCK_MODEL_ID: props.bedrockModelId ?? '', MODEL_ENDPOINT_NAME: props.modelEndpointName ?? '', GUARDRAIL_ID: guardrail.attrGuardrailId, GUARDRAIL_VERSION: guardrailVersion.attrVersion, DEXCOM_SECRET_ARN: dexcomSecret.secretArn };
     const apiFunction = new lambda.DockerImageFunction(this, 'ApiFunction', {
       code: backendCode, memorySize: 1024, timeout: Duration.seconds(25), environment,
       logGroup: new logs.LogGroup(this, 'ApiLogs', { retention: logs.RetentionDays.TWO_WEEKS }),

@@ -2,7 +2,7 @@ import csv
 import io
 from datetime import datetime, timezone
 
-from app.model_adapter import _payload, _real_cgm
+from app.model_adapter import _payload, _prediction_cgm, _real_cgm, _reference_cgm
 
 
 def meal():
@@ -45,3 +45,35 @@ def test_model_payload_matches_endpoint_and_keeps_only_supported_health_values()
     assert next(row for row in rows if row["Timestamp"] == "2026-10-10T11:50:00Z")["HR"] == "72.0"
     assert next(row for row in rows if row["Timestamp"] == "2026-10-09T12:00:00Z")["Carbs"] == "30"
     assert not any(row["Timestamp"] == "2026-10-10T10:00:00Z" for row in rows)
+
+
+def test_shared_reference_is_aligned_immediately_before_planned_meal(monkeypatch):
+    monkeypatch.setattr("app.model_adapter._shared_reference_rows", lambda: ((0, 100.0), (5, 103.0), (10, 105.0), (15, 104.0)))
+    cutoff = datetime(2026, 10, 11, 12, tzinfo=timezone.utc)
+    aligned = _reference_cgm(cutoff)
+    assert aligned[0]["timestamp"] == "2026-10-11T11:44:00Z"
+    assert aligned[-1]["timestamp"] == "2026-10-11T11:59:00Z"
+    assert all(item["source"] == "shared_reference" for item in aligned)
+
+
+def test_prediction_prefers_participant_upload_and_falls_back_only_when_missing(monkeypatch):
+    cutoff = datetime(2026, 10, 11, 12, tzinfo=timezone.utc)
+    start = cutoff.replace(day=4)
+    own = [
+        {"timestamp": "2026-10-11T11:45:00Z", "glucose_mg_dl": 100, "import_id": "upload"},
+        {"timestamp": "2026-10-11T11:50:00Z", "glucose_mg_dl": 102, "import_id": "upload"},
+        {"timestamp": "2026-10-11T11:55:00Z", "glucose_mg_dl": 104, "import_id": "upload"},
+    ]
+    selected, context = _prediction_cgm(own, start, cutoff, True)
+    assert selected == own
+    assert context == "participant_upload"
+
+    reference = [
+        {"timestamp": "2026-10-11T11:45:00Z", "glucose_mg_dl": 90, "source": "shared_reference"},
+        {"timestamp": "2026-10-11T11:50:00Z", "glucose_mg_dl": 91, "source": "shared_reference"},
+        {"timestamp": "2026-10-11T11:55:00Z", "glucose_mg_dl": 92, "source": "shared_reference"},
+    ]
+    monkeypatch.setattr("app.model_adapter._reference_cgm", lambda _: reference)
+    selected, context = _prediction_cgm([], start, cutoff, True)
+    assert selected == reference
+    assert context == "shared_reference_fallback"

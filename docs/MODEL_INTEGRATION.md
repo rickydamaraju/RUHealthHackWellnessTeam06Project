@@ -11,9 +11,12 @@ The development stack invokes the real-time SageMaker endpoint named by the
    only from that Cognito subject's DynamoDB partition.
 2. The feature adapter loads seven days of that user's earlier meals, Apple
    Health records, profile weight, and uploaded CGM readings.
-3. Dexcom sandbox rows are always excluded. A prediction requires at least
-   three participant-uploaded readings in the 15 minutes before the meal, with
-   the latest reading no more than five minutes old.
+3. Dexcom sandbox rows are always excluded. Saved-meal predictions require at
+   least three participant-uploaded readings in the 15 minutes before the meal.
+   Future-meal predictions prefer the participant's uploaded CGM, re-anchoring
+   older uploads to the planned meal time when needed. If the account has no
+   usable upload, they use the private shared held-out reference stored in S3
+   and mark that fallback in the response audit.
 4. Saved meal nutrition becomes the endpoint's carbohydrate, protein, fat, and
    fiber input. Prior saved meals become historical meal events.
 5. Apple Health heart rate is mapped to the model's HR field. Active-energy and
@@ -53,6 +56,7 @@ and the Bedrock wellness-check status.
 }
 ```
 
-The deployed model requires real pre-meal glucose context. Apple Health and
-meal data supplement that context; they cannot replace the required baseline
-for this model version.
+The deployed model requires pre-meal glucose context. Apple Health and meal
+data supplement that context. The future-meal route can supply the held-out S3
+reference when participant CGM is unavailable; it never uses Dexcom sandbox
+rows and does not represent the shared reference as the participant's data.
